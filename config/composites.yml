@@ -1,0 +1,69 @@
+# Composite Signal Configuration
+
+# Policy for handling correlated blocks
+correlation_policy:
+  max_block_corr: 0.90
+  action_if_exceeded: cap_combined_weight
+  max_combined_weight: 0.25
+
+# Composite definitions
+composites:
+  # Fast composite (4-8 week horizon)
+  - name: fast_composite
+    speed: fast
+    z_window: 104
+    target_horizons: [4, 8]
+    objective: "Maximize forward return IC, reduce tail drawdown"
+    blocks:
+      - block: equity_leadership
+        weight: 1.5
+      - block: factor_prefs
+        weight: 1.2
+      - block: vol_liquidity
+        weight: 1.5
+      - block: credit
+        weight: 1.0
+      - block: defensive_rotation
+        weight: 0.8
+
+  # Medium composite (13-26 week horizon)
+  - name: medium_composite
+    speed: medium
+    z_window: 156
+    target_horizons: [13, 26]
+    objective: "Classify Risk-Off before 16-24 week drawdowns, balance precision/recall"
+    blocks:
+      - block: credit
+        weight: 1.5
+      - block: rates
+        weight: 1.2
+      - block: fx
+        weight: 1.0
+      - block: global
+        weight: 1.2
+      - block: equity_leadership
+        weight: 0.8
+      - block: vol_liquidity
+        weight: 1.0
+      - block: commodities
+        weight: 0.6
+
+  # Slow composite (26-52 week horizon)
+  - name: slow_composite
+    speed: slow
+    z_window: 260
+    target_horizons: [26, 52]
+    objective: "Correlate with macro cycle risk, lead 52-week returns"
+    blocks:
+      - block: rates
+        weight: 1.5
+      - block: credit
+        weight: 1.5
+      - block: macro_slow
+        weight: 1.5
+      - block: global
+        weight: 1.0
+      - block: commodities
+        weight: 0.8
+      - block: fx
+        weight: 0.8

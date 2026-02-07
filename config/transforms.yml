@@ -1,0 +1,87 @@
+# Feature Transform Configuration
+
+# Forward-fill limits by series kind (business days)
+ffill_limits:
+  price: 5            # Equities, ETFs
+  fx: 3               # FX pairs
+  vol: 2              # VIX, VVIX
+  macro_daily: 10     # FRED daily (yields, spreads)
+  macro_weekly: 21    # FRED weekly (NFCI, claims)
+  macro_monthly: 60   # FRED monthly (permits, sentiment)
+
+# Transform definitions
+transforms:
+  # Z-score transforms (rolling standardization)
+  - name: z_52w
+    function: zscore
+    window: 52
+    description: "52-week rolling z-score"
+
+  - name: z_104w
+    function: zscore
+    window: 104
+    description: "104-week (2-year) rolling z-score"
+
+  - name: z_156w
+    function: zscore
+    window: 156
+    description: "156-week (3-year) rolling z-score"
+
+  - name: z_260w
+    function: zscore
+    window: 260
+    description: "260-week (5-year) rolling z-score"
+
+  # Percentile transforms
+  - name: pctile_52w
+    function: percentile
+    window: 52
+    description: "52-week rolling percentile [0,1]"
+
+  - name: pctile_104w
+    function: percentile
+    window: 104
+    description: "104-week rolling percentile [0,1]"
+
+  # Rate of change transforms
+  - name: roc_4w
+    function: roc
+    window: 4
+    description: "4-week rate of change"
+
+  - name: roc_8w
+    function: roc
+    window: 8
+    description: "8-week rate of change"
+
+  - name: roc_13w
+    function: roc
+    window: 13
+    description: "13-week (quarterly) rate of change"
+
+  - name: roc_26w
+    function: roc
+    window: 26
+    description: "26-week (semi-annual) rate of change"
+
+  # Slope transforms (trend strength)
+  - name: slope_13w
+    function: slope
+    window: 13
+    description: "13-week standardized slope"
+
+  - name: slope_26w
+    function: slope
+    window: 26
+    description: "26-week standardized slope"
+
+  - name: slope_52w
+    function: slope
+    window: 52
+    description: "52-week standardized slope"
+
+  # Drawdown transform
+  - name: dd_52w
+    function: drawdown
+    window: 52
+    description: "Drawdown from 52-week high"

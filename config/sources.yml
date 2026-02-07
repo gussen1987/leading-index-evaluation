@@ -1,0 +1,15 @@
+# Data source configuration
+
+yahoo:
+  name: "Yahoo Finance"
+  enabled: true
+  rate_limit_per_minute: 60
+  retry_attempts: 3
+  retry_delay_seconds: 1.0
+
+fred:
+  name: "Federal Reserve Economic Data"
+  enabled: true
+  rate_limit_per_minute: 120
+  retry_attempts: 3
+  retry_delay_seconds: 0.5

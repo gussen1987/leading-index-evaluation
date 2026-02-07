@@ -1,0 +1,592 @@
+# Data Universe Configuration
+# Defines all series, ratios, computed series, and signal blocks
+
+profiles:
+  full_etf:
+    description: "All ETFs, starts ~2010"
+    min_coverage: 0.85
+
+  long_history:
+    description: "Macro-only for deep backtest, starts ~1990"
+    min_coverage: 0.80
+    series:
+      - SPY
+      - "^GSPC"
+      - DGS10
+      - DGS2
+      - T10Y2Y
+      - BAMLH0A0HYM2
+      - DTWEXBGS
+      - GLD
+      - USO
+
+# =============================================================================
+# BASE SERIES
+# =============================================================================
+
+series:
+  # Equity ETFs
+  - id: SPY
+    source: yahoo
+    ticker: SPY
+    kind: price
+    description: "S&P 500 ETF"
+
+  - id: RSP
+    source: yahoo
+    ticker: RSP
+    kind: price
+    description: "S&P 500 Equal Weight ETF"
+
+  - id: IWM
+    source: yahoo
+    ticker: IWM
+    kind: price
+    description: "Russell 2000 ETF"
+
+  - id: QQQ
+    source: yahoo
+    ticker: QQQ
+    kind: price
+    description: "Nasdaq 100 ETF"
+
+  - id: XLY
+    source: yahoo
+    ticker: XLY
+    kind: price
+    description: "Consumer Discretionary Sector"
+
+  - id: XLP
+    source: yahoo
+    ticker: XLP
+    kind: price
+    description: "Consumer Staples Sector"
+
+  - id: XLF
+    source: yahoo
+    ticker: XLF
+    kind: price
+    description: "Financial Sector"
+
+  - id: XLU
+    source: yahoo
+    ticker: XLU
+    kind: price
+    description: "Utilities Sector"
+
+  - id: XLK
+    source: yahoo
+    ticker: XLK
+    kind: price
+    description: "Technology Sector"
+
+  - id: XLI
+    source: yahoo
+    ticker: XLI
+    kind: price
+    description: "Industrials Sector"
+
+  # Factor ETFs
+  - id: SPHB
+    source: yahoo
+    ticker: SPHB
+    kind: price
+    description: "S&P 500 High Beta ETF"
+
+  - id: SPLV
+    source: yahoo
+    ticker: SPLV
+    kind: price
+    description: "S&P 500 Low Volatility ETF"
+
+  - id: MTUM
+    source: yahoo
+    ticker: MTUM
+    kind: price
+    description: "MSCI USA Momentum Factor ETF"
+
+  - id: USMV
+    source: yahoo
+    ticker: USMV
+    kind: price
+    description: "MSCI USA Min Vol Factor ETF"
+
+  - id: QUAL
+    source: yahoo
+    ticker: QUAL
+    kind: price
+    description: "MSCI USA Quality Factor ETF"
+
+  # Fixed Income
+  - id: TLT
+    source: yahoo
+    ticker: TLT
+    kind: price
+    description: "20+ Year Treasury ETF"
+
+  - id: IEF
+    source: yahoo
+    ticker: IEF
+    kind: price
+    description: "7-10 Year Treasury ETF"
+
+  - id: SHY
+    source: yahoo
+    ticker: SHY
+    kind: price
+    description: "1-3 Year Treasury ETF"
+
+  - id: HYG
+    source: yahoo
+    ticker: HYG
+    kind: price
+    description: "High Yield Corporate Bond ETF"
+
+  - id: LQD
+    source: yahoo
+    ticker: LQD
+    kind: price
+    description: "Investment Grade Corporate Bond ETF"
+
+  # Commodities
+  - id: GLD
+    source: yahoo
+    ticker: GLD
+    kind: price
+    description: "Gold ETF"
+
+  - id: USO
+    source: yahoo
+    ticker: USO
+    kind: price
+    description: "US Oil Fund ETF"
+
+  - id: COPX
+    source: yahoo
+    ticker: COPX
+    kind: price
+    description: "Copper Miners ETF"
+
+  - id: DBC
+    source: yahoo
+    ticker: DBC
+    kind: price
+    description: "Commodities ETF"
+
+  # International
+  - id: EEM
+    source: yahoo
+    ticker: EEM
+    kind: price
+    description: "Emerging Markets ETF"
+
+  - id: EFA
+    source: yahoo
+    ticker: EFA
+    kind: price
+    description: "EAFE (Developed ex-US) ETF"
+
+  - id: ACWX
+    source: yahoo
+    ticker: ACWX
+    kind: price
+    description: "All Country World ex-US ETF"
+
+  - id: FXI
+    source: yahoo
+    ticker: FXI
+    kind: price
+    description: "China Large Cap ETF"
+
+  # Volatility
+  - id: VIX
+    source: yahoo
+    ticker: "^VIX"
+    kind: vol
+    description: "CBOE Volatility Index"
+
+  - id: VVIX
+    source: yahoo
+    ticker: "^VVIX"
+    kind: vol
+    description: "VIX of VIX"
+
+  # FX
+  - id: AUDJPY
+    source: yahoo
+    ticker: "AUDJPY=X"
+    kind: fx
+    fallbacks:
+      - source: yahoo
+        ticker: FXA
+    description: "AUD/JPY Cross"
+
+  - id: CADJPY
+    source: yahoo
+    ticker: "CADJPY=X"
+    kind: fx
+    description: "CAD/JPY Cross"
+
+  - id: UUP
+    source: yahoo
+    ticker: UUP
+    kind: fx
+    description: "US Dollar Index ETF"
+
+  # FRED Rates & Spreads
+  - id: DGS10
+    source: fred
+    ticker: DGS10
+    kind: macro_daily
+    description: "10-Year Treasury Rate"
+
+  - id: DGS2
+    source: fred
+    ticker: DGS2
+    kind: macro_daily
+    description: "2-Year Treasury Rate"
+
+  - id: T10Y2Y
+    source: fred
+    ticker: T10Y2Y
+    kind: macro_daily
+    description: "10Y-2Y Treasury Spread"
+
+  - id: DFII10
+    source: fred
+    ticker: DFII10
+    kind: macro_daily
+    description: "10-Year TIPS Real Yield"
+
+  - id: T10YIE
+    source: fred
+    ticker: T10YIE
+    kind: macro_daily
+    description: "10-Year Breakeven Inflation"
+
+  - id: BAMLH0A0HYM2
+    source: fred
+    ticker: BAMLH0A0HYM2
+    kind: macro_daily
+    description: "ICE BofA High Yield OAS"
+
+  - id: BAMLC0A0CM
+    source: fred
+    ticker: BAMLC0A0CM
+    kind: macro_daily
+    description: "ICE BofA Investment Grade OAS"
+
+  # FRED Dollar Index
+  - id: DTWEXBGS
+    source: fred
+    ticker: DTWEXBGS
+    kind: macro_daily
+    description: "Trade Weighted Dollar Index"
+
+  # FRED Macro Weekly
+  - id: NFCI
+    source: fred
+    ticker: NFCI
+    kind: macro_weekly
+    description: "Chicago Fed National Financial Conditions Index"
+
+  - id: ICSA
+    source: fred
+    ticker: ICSA
+    kind: macro_weekly
+    description: "Initial Jobless Claims"
+
+  # FRED Macro Monthly
+  - id: PERMIT
+    source: fred
+    ticker: PERMIT
+    kind: macro_monthly
+    description: "Building Permits"
+
+  - id: UMCSENT
+    source: fred
+    ticker: UMCSENT
+    kind: macro_monthly
+    description: "U of Michigan Consumer Sentiment"
+
+# =============================================================================
+# RATIOS
+# =============================================================================
+
+ratios:
+  # Equity Leadership (risk-on numerator)
+  - id: RSP_SPY
+    numerator: RSP
+    denominator: SPY
+    description: "Equal Weight vs Cap Weight (breadth proxy)"
+
+  - id: IWM_SPY
+    numerator: IWM
+    denominator: SPY
+    description: "Small Cap vs Large Cap"
+
+  - id: XLY_XLP
+    numerator: XLY
+    denominator: XLP
+    description: "Discretionary vs Staples"
+
+  - id: XLF_XLU
+    numerator: XLF
+    denominator: XLU
+    description: "Financials vs Utilities"
+
+  - id: XLK_XLU
+    numerator: XLK
+    denominator: XLU
+    description: "Tech vs Utilities"
+
+  - id: XLI_XLU
+    numerator: XLI
+    denominator: XLU
+    description: "Industrials vs Utilities"
+
+  # Factor Preferences (risk-on numerator)
+  - id: SPHB_SPLV
+    numerator: SPHB
+    denominator: SPLV
+    description: "High Beta vs Low Vol"
+
+  - id: MTUM_USMV
+    numerator: MTUM
+    denominator: USMV
+    description: "Momentum vs Min Vol"
+
+  - id: QUAL_USMV
+    numerator: QUAL
+    denominator: USMV
+    description: "Quality vs Min Vol"
+
+  # Credit (risk-on = tight spreads, HYG/IEF rising)
+  - id: HYG_IEF
+    numerator: HYG
+    denominator: IEF
+    description: "High Yield vs Treasuries"
+
+  - id: LQD_IEF
+    numerator: LQD
+    denominator: IEF
+    description: "IG Corporate vs Treasuries"
+
+  # Commodities
+  - id: COPX_GLD
+    numerator: COPX
+    denominator: GLD
+    description: "Copper vs Gold (growth proxy)"
+
+  - id: USO_GLD
+    numerator: USO
+    denominator: GLD
+    description: "Oil vs Gold"
+
+  - id: DBC_GLD
+    numerator: DBC
+    denominator: GLD
+    description: "Commodities vs Gold"
+
+  # Global (risk-on = EM/intl outperformance)
+  - id: EEM_SPY
+    numerator: EEM
+    denominator: SPY
+    description: "Emerging Markets vs US"
+
+  - id: EFA_SPY
+    numerator: EFA
+    denominator: SPY
+    description: "Developed ex-US vs US"
+
+  - id: ACWX_SPY
+    numerator: ACWX
+    denominator: SPY
+    description: "All World ex-US vs US"
+
+  - id: FXI_SPY
+    numerator: FXI
+    denominator: SPY
+    description: "China vs US"
+
+  # Defensive Rotation (risk-off = defensive outperformance, INVERT these)
+  - id: XLU_SPY
+    numerator: XLU
+    denominator: SPY
+    invert: true
+    description: "Utilities vs Market (inverted for risk-on)"
+
+  - id: TLT_SHY
+    numerator: TLT
+    denominator: SHY
+    invert: true
+    description: "Long Duration vs Short (inverted for risk-on)"
+
+  - id: GLD_SPY
+    numerator: GLD
+    denominator: SPY
+    invert: true
+    description: "Gold vs Market (inverted for risk-on)"
+
+# =============================================================================
+# COMPUTED SERIES
+# =============================================================================
+
+computed:
+  - id: RATES_VOL_PROXY_21D
+    type: realized_vol
+    series: TLT
+    window_days: 21
+    description: "Bond volatility proxy (not MOVE index)"
+
+  - id: SPY_RSI_14
+    type: rsi
+    series: SPY
+    window_days: 14
+    description: "S&P 500 RSI 14-day"
+
+  - id: SPY_ABOVE_200DMA
+    type: above_ma
+    series: SPY
+    window_days: 200
+    description: "SPY above 200-day MA (1 or 0)"
+
+  - id: SPY_200DMA_SLOPE
+    type: ma_slope
+    series: SPY
+    window_days: 200
+    description: "Slope of SPY 200-day MA"
+
+  - id: CLAIMS_4WMA
+    type: moving_average
+    series: ICSA
+    window_days: 28
+    description: "4-week MA of initial claims"
+
+# =============================================================================
+# BLOCKS
+# =============================================================================
+
+blocks:
+  - name: equity_leadership
+    description: "Risk-on leadership in equities"
+    members:
+      - id: RSP_SPY
+        use_features: [z_52w, roc_8w]
+      - id: IWM_SPY
+        use_features: [z_52w, roc_8w]
+      - id: XLY_XLP
+        use_features: [z_52w, roc_8w]
+      - id: XLF_XLU
+        use_features: [z_52w, roc_8w]
+      - id: XLK_XLU
+        use_features: [z_52w, roc_8w]
+      - id: XLI_XLU
+        use_features: [z_52w, roc_8w]
+
+  - name: factor_prefs
+    description: "Factor preference for risk"
+    members:
+      - id: SPHB_SPLV
+        use_features: [z_52w, roc_8w]
+      - id: MTUM_USMV
+        use_features: [z_52w, roc_8w]
+      - id: QUAL_USMV
+        use_features: [z_52w, roc_8w]
+
+  - name: credit
+    description: "Credit market conditions"
+    members:
+      - id: HYG_IEF
+        use_features: [z_52w, roc_8w]
+      - id: LQD_IEF
+        use_features: [z_52w, roc_8w]
+      - id: BAMLH0A0HYM2
+        use_features: [z_52w, roc_8w]
+        invert: true
+      - id: BAMLC0A0CM
+        use_features: [z_52w]
+        invert: true
+
+  - name: rates
+    description: "Interest rate conditions"
+    members:
+      - id: T10Y2Y
+        use_features: [z_104w, roc_13w]
+      - id: DFII10
+        use_features: [z_104w]
+      - id: T10YIE
+        use_features: [z_52w, roc_8w]
+
+  - name: fx
+    description: "FX risk appetite"
+    members:
+      - id: AUDJPY
+        use_features: [z_52w, roc_8w]
+      - id: CADJPY
+        use_features: [z_52w, roc_8w]
+      - id: UUP
+        use_features: [z_52w, roc_8w]
+        invert: true
+
+  - name: commodities
+    description: "Commodity risk appetite"
+    members:
+      - id: COPX_GLD
+        use_features: [z_52w, roc_8w]
+      - id: USO_GLD
+        use_features: [z_52w, roc_8w]
+      - id: DBC_GLD
+        use_features: [z_52w, roc_8w]
+
+  - name: vol_liquidity
+    description: "Volatility and liquidity conditions"
+    members:
+      - id: VIX
+        use_features: [z_52w, roc_8w]
+        invert: true
+      - id: VVIX
+        use_features: [z_52w]
+        invert: true
+      - id: NFCI
+        use_features: [z_104w]
+        invert: true
+      - id: RATES_VOL_PROXY_21D
+        use_features: [z_52w, pctile_52w]
+        invert: true
+
+  - name: global
+    description: "Global risk appetite"
+    members:
+      - id: EEM_SPY
+        use_features: [z_52w, roc_13w]
+      - id: EFA_SPY
+        use_features: [z_52w, roc_13w]
+      - id: ACWX_SPY
+        use_features: [z_52w, roc_13w]
+      - id: FXI_SPY
+        use_features: [z_52w, roc_8w]
+
+  - name: defensive_rotation
+    description: "Defensive sector rotation (inverted for risk-on)"
+    members:
+      - id: XLU_SPY
+        use_features: [z_52w, roc_8w]
+        invert: true
+      - id: TLT_SHY
+        use_features: [z_52w, roc_8w]
+        invert: true
+      - id: GLD_SPY
+        use_features: [z_52w, roc_8w]
+        invert: true
+
+  - name: macro_slow
+    description: "Slow-moving macro indicators"
+    members:
+      - id: ICSA
+        use_features: [z_104w, roc_26w]
+        invert: true
+      - id: PERMIT
+        use_features: [z_104w, roc_26w]
+      - id: UMCSENT
+        use_features: [z_104w, roc_26w]

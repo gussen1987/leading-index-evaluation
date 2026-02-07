@@ -1,0 +1,54 @@
+# Backtest and Research Configuration
+
+# Prediction targets
+targets:
+  - id: spy_fwd_return_4w
+    series: SPY
+    horizon_weeks: [4]
+    type: log_return
+
+  - id: spy_fwd_return_8w
+    series: SPY
+    horizon_weeks: [8]
+    type: log_return
+
+  - id: spy_fwd_return_13w
+    series: SPY
+    horizon_weeks: [13]
+    type: log_return
+
+  - id: spy_fwd_return_26w
+    series: SPY
+    horizon_weeks: [26]
+    type: log_return
+
+  - id: spy_fwd_return_52w
+    series: SPY
+    horizon_weeks: [52]
+    type: log_return
+
+  - id: spy_fwd_drawdown_13w
+    series: SPY
+    horizon_weeks: [13]
+    type: max_drawdown_forward
+
+  - id: spy_fwd_drawdown_26w
+    series: SPY
+    horizon_weeks: [26]
+    type: max_drawdown_forward
+
+# Feature selection rules (multiple comparison protection)
+selection_rules:
+  min_abs_ic: 0.03           # Minimum absolute IC
+  min_horizons: 2            # Must be predictive for N horizons
+  min_windows_pass: 0.60     # Must pass in 60%+ of walk-forward windows
+  min_sign_consistency: 0.70 # Sign stable in 70%+ of windows
+  max_pair_corr: 0.85        # Drop one of correlated pair
+
+# Walk-forward validation settings
+walk_forward:
+  train_years: 8
+  test_years: 2
+  step_years: 1
+  purge_gap_weeks: 2   # Gap between train and test
+  embargo_weeks: 1     # Gap after test period

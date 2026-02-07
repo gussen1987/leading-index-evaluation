@@ -1,0 +1,20 @@
+# Regime Classification Configuration
+
+# Thresholds for regime classification
+thresholds:
+  risk_on: 0.50          # Composite > threshold → Risk-On
+  risk_off: -0.50        # Composite < threshold → Risk-Off
+  hysteresis_buffer: 0.15  # Must cross threshold ± buffer to exit
+  min_weeks_in_regime: 2   # Minimum weeks before switching
+
+# Confidence scoring weights (must sum to 1.0)
+confidence_weights:
+  dispersion: 0.60       # Fraction of blocks agreeing with composite sign
+  tail_penalty: 0.20     # Penalty when VIX/VVIX elevated
+  liquidity_penalty: 0.20  # Penalty when NFCI > 0
+
+# Tail and liquidity thresholds
+tail_liquidity:
+  vix_z_threshold: 1.5     # VIX z-score above this triggers penalty
+  vvix_z_threshold: 1.5    # VVIX z-score above this triggers penalty
+  nfci_threshold: 0.0      # NFCI above this triggers penalty

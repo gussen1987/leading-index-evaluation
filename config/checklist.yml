@@ -1,0 +1,215 @@
+# Bull Market Checklist Configuration
+
+# Score thresholds for labels
+score_thresholds:
+  confirmed_risk_on: 75  # Score >= 75 → "Confirmed Risk-On"
+  on_watch: 50           # Score >= 50 → "On Watch"
+                         # Score < 50 → "Risk-Off"
+
+# Checklist items (14 items)
+items:
+  # ===========================================================================
+  # TREND (2 items)
+  # ===========================================================================
+  - id: spy_above_200dma
+    name: "SPY Above 200-Day MA"
+    category: trend
+    weight: 1.5
+    description: "Price above long-term trend"
+    rule:
+      type: threshold_rule
+      series: SPY_ABOVE_200DMA
+      operator: gt
+      bull_threshold: 0.5
+      bear_threshold: 0.5
+
+  - id: spy_above_50dma
+    name: "SPY Above 50-Day MA"
+    category: trend
+    weight: 1.0
+    description: "Price above medium-term trend"
+    rule:
+      type: threshold_rule
+      series: SPY
+      feature: above_ma_50
+      operator: gt
+      bull_threshold: 0.5
+      bear_threshold: 0.5
+
+  # ===========================================================================
+  # MOMENTUM (2 items)
+  # ===========================================================================
+  - id: spy_rsi_healthy
+    name: "SPY RSI Healthy"
+    category: momentum
+    weight: 1.0
+    description: "RSI between 40-70 (not oversold or overbought)"
+    rule:
+      type: compound_rule
+      logic: all
+      conditions:
+        - type: threshold_rule
+          series: SPY_RSI_14
+          operator: gt
+          bull_threshold: 40
+          bear_threshold: 30
+        - type: threshold_rule
+          series: SPY_RSI_14
+          operator: lt
+          bull_threshold: 70
+          bear_threshold: 80
+
+  - id: medium_composite_positive
+    name: "Medium Composite Positive"
+    category: momentum
+    weight: 1.2
+    description: "Medium-term regime model positive"
+    rule:
+      type: threshold_rule
+      series: composite_medium
+      operator: gt
+      bull_threshold: 0.0
+      bear_threshold: -0.25
+
+  # ===========================================================================
+  # BREADTH (2 items) - Proxy Breadth v1
+  # ===========================================================================
+  - id: rsp_spy_healthy
+    name: "Equal Weight vs Cap Weight"
+    category: breadth
+    weight: 1.2
+    description: "Equal weight outperforming (breadth proxy)"
+    rule:
+      type: threshold_rule
+      series: RSP_SPY
+      feature: z_52w
+      operator: gt
+      bull_threshold: -0.5
+      bear_threshold: -1.0
+
+  - id: iwm_spy_healthy
+    name: "Small Cap vs Large Cap"
+    category: breadth
+    weight: 1.0
+    description: "Small caps not lagging significantly"
+    rule:
+      type: threshold_rule
+      series: IWM_SPY
+      feature: z_52w
+      operator: gt
+      bull_threshold: -1.0
+      bear_threshold: -1.5
+
+  # ===========================================================================
+  # CREDIT (2 items)
+  # ===========================================================================
+  - id: hyg_ief_positive
+    name: "High Yield vs Treasuries"
+    category: credit
+    weight: 1.5
+    description: "Credit outperforming safe havens"
+    rule:
+      type: threshold_rule
+      series: HYG_IEF
+      feature: z_52w
+      operator: gt
+      bull_threshold: -0.5
+      bear_threshold: -1.0
+
+  - id: hy_spreads_contained
+    name: "HY Spreads Contained"
+    category: credit
+    weight: 1.2
+    description: "High yield spreads not elevated"
+    rule:
+      type: threshold_rule
+      series: BAMLH0A0HYM2
+      feature: z_52w
+      operator: lt
+      bull_threshold: 0.5
+      bear_threshold: 1.0
+
+  # ===========================================================================
+  # RATES (2 items)
+  # ===========================================================================
+  - id: yield_curve_ok
+    name: "Yield Curve Not Inverted"
+    category: rates
+    weight: 1.2
+    description: "10Y-2Y spread not deeply inverted"
+    rule:
+      type: threshold_rule
+      series: T10Y2Y
+      operator: gt
+      bull_threshold: -0.5
+      bear_threshold: -1.0
+
+  - id: breakeven_inflation_stable
+    name: "Breakeven Inflation Stable"
+    category: rates
+    weight: 0.8
+    description: "Inflation expectations not collapsing"
+    rule:
+      type: threshold_rule
+      series: T10YIE
+      feature: z_52w
+      operator: gt
+      bull_threshold: -1.0
+      bear_threshold: -1.5
+
+  # ===========================================================================
+  # FX (2 items)
+  # ===========================================================================
+  - id: audjpy_positive
+    name: "AUD/JPY Trend"
+    category: fx
+    weight: 1.0
+    description: "Risk-on FX pair trending positively"
+    rule:
+      type: threshold_rule
+      series: AUDJPY
+      feature: z_52w
+      operator: gt
+      bull_threshold: -0.5
+      bear_threshold: -1.0
+
+  - id: dollar_not_surging
+    name: "Dollar Not Surging"
+    category: fx
+    weight: 0.8
+    description: "USD not in flight-to-safety mode"
+    rule:
+      type: threshold_rule
+      series: UUP
+      feature: z_52w
+      operator: lt
+      bull_threshold: 1.0
+      bear_threshold: 1.5
+
+  # ===========================================================================
+  # VOLATILITY (2 items)
+  # ===========================================================================
+  - id: vix_contained
+    name: "VIX Contained"
+    category: volatility
+    weight: 1.5
+    description: "Volatility not elevated"
+    rule:
+      type: threshold_rule
+      series: VIX
+      feature: z_52w
+      operator: lt
+      bull_threshold: 0.5
+      bear_threshold: 1.0
+
+  - id: nfci_normal
+    name: "Financial Conditions Normal"
+    category: volatility
+    weight: 1.0
+    description: "Chicago Fed NFCI not stressed"
+    rule:
+      type: threshold_rule
+      series: NFCI
+      operator: lt
+      bull_threshold: 0.0
+      bear_threshold: 0.5
