@@ -25,7 +25,9 @@ profiles:
 # =============================================================================
 
 series:
-  # Equity ETFs
+  # ---------------------------------------------------------------------------
+  # Equity ETFs - Core
+  # ---------------------------------------------------------------------------
   - id: SPY
     source: yahoo
     ticker: SPY
@@ -50,6 +52,9 @@ series:
     kind: price
     description: "Nasdaq 100 ETF"
 
+  # ---------------------------------------------------------------------------
+  # Sector ETFs
+  # ---------------------------------------------------------------------------
   - id: XLY
     source: yahoo
     ticker: XLY
@@ -86,7 +91,21 @@ series:
     kind: price
     description: "Industrials Sector"
 
+  - id: XLB
+    source: yahoo
+    ticker: XLB
+    kind: price
+    description: "Materials Sector"
+
+  - id: XLE
+    source: yahoo
+    ticker: XLE
+    kind: price
+    description: "Energy Sector"
+
+  # ---------------------------------------------------------------------------
   # Factor ETFs
+  # ---------------------------------------------------------------------------
   - id: SPHB
     source: yahoo
     ticker: SPHB
@@ -117,7 +136,9 @@ series:
     kind: price
     description: "MSCI USA Quality Factor ETF"
 
-  # Fixed Income
+  # ---------------------------------------------------------------------------
+  # Fixed Income ETFs
+  # ---------------------------------------------------------------------------
   - id: TLT
     source: yahoo
     ticker: TLT
@@ -136,6 +157,33 @@ series:
     kind: price
     description: "1-3 Year Treasury ETF"
 
+  - id: TIP
+    source: yahoo
+    ticker: TIP
+    kind: price
+    description: "TIPS ETF (Inflation-Protected)"
+
+  - id: AGG
+    source: yahoo
+    ticker: AGG
+    kind: price
+    description: "US Aggregate Bond ETF"
+
+  - id: BND
+    source: yahoo
+    ticker: BND
+    kind: price
+    description: "Total Bond Market ETF"
+
+  - id: BWX
+    source: yahoo
+    ticker: BWX
+    kind: price
+    description: "International Treasury ETF"
+
+  # ---------------------------------------------------------------------------
+  # Credit ETFs
+  # ---------------------------------------------------------------------------
   - id: HYG
     source: yahoo
     ticker: HYG
@@ -148,18 +196,113 @@ series:
     kind: price
     description: "Investment Grade Corporate Bond ETF"
 
-  # Commodities
+  - id: JNK
+    source: yahoo
+    ticker: JNK
+    kind: price
+    description: "High Yield Bond ETF (SPDR)"
+
+  - id: EMB
+    source: yahoo
+    ticker: EMB
+    kind: price
+    description: "Emerging Markets Bond ETF"
+
+  # ---------------------------------------------------------------------------
+  # Thematic/Specialty ETFs
+  # ---------------------------------------------------------------------------
+  - id: KRE
+    source: yahoo
+    ticker: KRE
+    kind: price
+    description: "Regional Banks ETF"
+
+  - id: VNQ
+    source: yahoo
+    ticker: VNQ
+    kind: price
+    description: "Real Estate ETF (REITs)"
+
+  - id: SMH
+    source: yahoo
+    ticker: SMH
+    kind: price
+    description: "Semiconductor ETF"
+
+  - id: IYT
+    source: yahoo
+    ticker: IYT
+    kind: price
+    description: "Transportation ETF"
+
+  - id: XHB
+    source: yahoo
+    ticker: XHB
+    kind: price
+    description: "Homebuilders ETF"
+
+  - id: ITB
+    source: yahoo
+    ticker: ITB
+    kind: price
+    description: "Home Construction ETF"
+
+  - id: XRT
+    source: yahoo
+    ticker: XRT
+    kind: price
+    description: "Retail ETF"
+
+  - id: IBB
+    source: yahoo
+    ticker: IBB
+    kind: price
+    description: "Biotech ETF"
+
+  - id: XOP
+    source: yahoo
+    ticker: XOP
+    kind: price
+    description: "Oil & Gas Exploration ETF"
+
+  - id: XME
+    source: yahoo
+    ticker: XME
+    kind: price
+    description: "Metals & Mining ETF"
+
+  # ---------------------------------------------------------------------------
+  # Commodities ETFs
+  # ---------------------------------------------------------------------------
   - id: GLD
     source: yahoo
     ticker: GLD
     kind: price
     description: "Gold ETF"
 
+  - id: SLV
+    source: yahoo
+    ticker: SLV
+    kind: price
+    description: "Silver ETF"
+
+  - id: GDXJ
+    source: yahoo
+    ticker: GDXJ
+    kind: price
+    description: "Junior Gold Miners ETF"
+
   - id: USO
     source: yahoo
     ticker: USO
     kind: price
     description: "US Oil Fund ETF"
+
+  - id: UNG
+    source: yahoo
+    ticker: UNG
+    kind: price
+    description: "Natural Gas ETF"
 
   - id: COPX
     source: yahoo
@@ -173,7 +316,15 @@ series:
     kind: price
     description: "Commodities ETF"
 
-  # International
+  - id: DBA
+    source: yahoo
+    ticker: DBA
+    kind: price
+    description: "Agriculture ETF"
+
+  # ---------------------------------------------------------------------------
+  # International ETFs
+  # ---------------------------------------------------------------------------
   - id: EEM
     source: yahoo
     ticker: EEM
@@ -198,7 +349,9 @@ series:
     kind: price
     description: "China Large Cap ETF"
 
-  # Volatility
+  # ---------------------------------------------------------------------------
+  # Volatility Indices
+  # ---------------------------------------------------------------------------
   - id: VIX
     source: yahoo
     ticker: "^VIX"
@@ -211,7 +364,45 @@ series:
     kind: vol
     description: "VIX of VIX"
 
-  # FX
+  # ---------------------------------------------------------------------------
+  # FX ETFs and Pairs
+  # ---------------------------------------------------------------------------
+  - id: UUP
+    source: yahoo
+    ticker: UUP
+    kind: fx
+    description: "US Dollar Index ETF"
+
+  - id: FXE
+    source: yahoo
+    ticker: FXE
+    kind: fx
+    description: "Euro ETF"
+
+  - id: FXY
+    source: yahoo
+    ticker: FXY
+    kind: fx
+    description: "Japanese Yen ETF"
+
+  - id: FXB
+    source: yahoo
+    ticker: FXB
+    kind: fx
+    description: "British Pound ETF"
+
+  - id: FXC
+    source: yahoo
+    ticker: FXC
+    kind: fx
+    description: "Canadian Dollar ETF"
+
+  - id: FXA
+    source: yahoo
+    ticker: FXA
+    kind: fx
+    description: "Australian Dollar ETF"
+
   - id: AUDJPY
     source: yahoo
     ticker: "AUDJPY=X"
@@ -227,13 +418,9 @@ series:
     kind: fx
     description: "CAD/JPY Cross"
 
-  - id: UUP
-    source: yahoo
-    ticker: UUP
-    kind: fx
-    description: "US Dollar Index ETF"
-
-  # FRED Rates & Spreads
+  # ---------------------------------------------------------------------------
+  # FRED Treasury Rates
+  # ---------------------------------------------------------------------------
   - id: DGS10
     source: fred
     ticker: DGS10
@@ -246,24 +433,72 @@ series:
     kind: macro_daily
     description: "2-Year Treasury Rate"
 
+  - id: DGS5
+    source: fred
+    ticker: DGS5
+    kind: macro_daily
+    description: "5-Year Treasury Rate"
+
+  - id: DGS30
+    source: fred
+    ticker: DGS30
+    kind: macro_daily
+    description: "30-Year Treasury Rate"
+
+  # ---------------------------------------------------------------------------
+  # FRED Yield Curve Spreads
+  # ---------------------------------------------------------------------------
   - id: T10Y2Y
     source: fred
     ticker: T10Y2Y
     kind: macro_daily
     description: "10Y-2Y Treasury Spread"
 
+  - id: T10Y3M
+    source: fred
+    ticker: T10Y3M
+    kind: macro_daily
+    description: "10Y-3M Treasury Spread"
+
+  # ---------------------------------------------------------------------------
+  # FRED Real Yields (TIPS)
+  # ---------------------------------------------------------------------------
   - id: DFII10
     source: fred
     ticker: DFII10
     kind: macro_daily
     description: "10-Year TIPS Real Yield"
 
+  - id: DFII5
+    source: fred
+    ticker: DFII5
+    kind: macro_daily
+    description: "5-Year TIPS Real Yield"
+
+  # ---------------------------------------------------------------------------
+  # FRED Inflation Expectations
+  # ---------------------------------------------------------------------------
   - id: T10YIE
     source: fred
     ticker: T10YIE
     kind: macro_daily
     description: "10-Year Breakeven Inflation"
 
+  - id: T5YIE
+    source: fred
+    ticker: T5YIE
+    kind: macro_daily
+    description: "5-Year Breakeven Inflation"
+
+  - id: T5YIFR
+    source: fred
+    ticker: T5YIFR
+    kind: macro_daily
+    description: "5-Year 5-Year Forward Inflation Expectation"
+
+  # ---------------------------------------------------------------------------
+  # FRED Credit Spreads
+  # ---------------------------------------------------------------------------
   - id: BAMLH0A0HYM2
     source: fred
     ticker: BAMLH0A0HYM2
@@ -276,45 +511,167 @@ series:
     kind: macro_daily
     description: "ICE BofA Investment Grade OAS"
 
-  # FRED Dollar Index
-  - id: DTWEXBGS
+  - id: BAMLH0A1HYBB
     source: fred
-    ticker: DTWEXBGS
+    ticker: BAMLH0A1HYBB
     kind: macro_daily
-    description: "Trade Weighted Dollar Index"
+    description: "ICE BofA BB OAS"
 
-  # FRED Macro Weekly
+  - id: BAMLH0A2HYB
+    source: fred
+    ticker: BAMLH0A2HYB
+    kind: macro_daily
+    description: "ICE BofA B OAS"
+
+  - id: BAMLH0A3HYC
+    source: fred
+    ticker: BAMLH0A3HYC
+    kind: macro_daily
+    description: "ICE BofA CCC OAS"
+
+  - id: TEDRATE
+    source: fred
+    ticker: TEDRATE
+    kind: macro_daily
+    description: "TED Spread (3M LIBOR - 3M T-Bill)"
+
+  # ---------------------------------------------------------------------------
+  # FRED Financial Conditions
+  # ---------------------------------------------------------------------------
   - id: NFCI
     source: fred
     ticker: NFCI
     kind: macro_weekly
     description: "Chicago Fed National Financial Conditions Index"
 
+  - id: ANFCI
+    source: fred
+    ticker: ANFCI
+    kind: macro_weekly
+    description: "Chicago Fed Adjusted NFCI"
+
+  - id: STLFSI4
+    source: fred
+    ticker: STLFSI4
+    kind: macro_weekly
+    description: "St. Louis Fed Financial Stress Index"
+
+  # ---------------------------------------------------------------------------
+  # FRED Labor Market
+  # ---------------------------------------------------------------------------
   - id: ICSA
     source: fred
     ticker: ICSA
     kind: macro_weekly
     description: "Initial Jobless Claims"
 
-  # FRED Macro Monthly
+  - id: CCSA
+    source: fred
+    ticker: CCSA
+    kind: macro_weekly
+    description: "Continued Jobless Claims"
+
+  - id: PAYEMS
+    source: fred
+    ticker: PAYEMS
+    kind: macro_monthly
+    description: "Nonfarm Payrolls"
+
+  - id: UNRATE
+    source: fred
+    ticker: UNRATE
+    kind: macro_monthly
+    description: "Unemployment Rate"
+
+  # ---------------------------------------------------------------------------
+  # FRED Housing
+  # ---------------------------------------------------------------------------
   - id: PERMIT
     source: fred
     ticker: PERMIT
     kind: macro_monthly
     description: "Building Permits"
 
+  - id: HOUST
+    source: fred
+    ticker: HOUST
+    kind: macro_monthly
+    description: "Housing Starts"
+
+  # ---------------------------------------------------------------------------
+  # FRED Sentiment/Surveys
+  # ---------------------------------------------------------------------------
   - id: UMCSENT
     source: fred
     ticker: UMCSENT
     kind: macro_monthly
     description: "U of Michigan Consumer Sentiment"
 
+  # ---------------------------------------------------------------------------
+  # FRED FX
+  # ---------------------------------------------------------------------------
+  - id: DTWEXBGS
+    source: fred
+    ticker: DTWEXBGS
+    kind: macro_daily
+    description: "Trade Weighted Dollar Index"
+
+  # ---------------------------------------------------------------------------
+  # FRED Commodities
+  # ---------------------------------------------------------------------------
+  - id: DCOILWTICO
+    source: fred
+    ticker: DCOILWTICO
+    kind: macro_daily
+    description: "WTI Crude Oil Price"
+
+  - id: GOLDAMGBD228NLBM
+    source: fred
+    ticker: GOLDAMGBD228NLBM
+    kind: macro_daily
+    description: "Gold Price (London Fix)"
+
+  # ---------------------------------------------------------------------------
+  # FRED Inflation
+  # ---------------------------------------------------------------------------
+  - id: CPIAUCSL
+    source: fred
+    ticker: CPIAUCSL
+    kind: macro_monthly
+    description: "Consumer Price Index (All Urban)"
+
+  - id: PPIACO
+    source: fred
+    ticker: PPIACO
+    kind: macro_monthly
+    description: "Producer Price Index (All Commodities)"
+
+  # ---------------------------------------------------------------------------
+  # FRED Production
+  # ---------------------------------------------------------------------------
+  - id: INDPRO
+    source: fred
+    ticker: INDPRO
+    kind: macro_monthly
+    description: "Industrial Production Index"
+
+  # ---------------------------------------------------------------------------
+  # FRED Volatility (alternative source)
+  # ---------------------------------------------------------------------------
+  - id: VIXCLS
+    source: fred
+    ticker: VIXCLS
+    kind: macro_daily
+    description: "VIX (FRED version)"
+
 # =============================================================================
 # RATIOS
 # =============================================================================
 
 ratios:
+  # ---------------------------------------------------------------------------
   # Equity Leadership (risk-on numerator)
+  # ---------------------------------------------------------------------------
   - id: RSP_SPY
     numerator: RSP
     denominator: SPY
@@ -324,6 +681,11 @@ ratios:
     numerator: IWM
     denominator: SPY
     description: "Small Cap vs Large Cap"
+
+  - id: QQQ_SPY
+    numerator: QQQ
+    denominator: SPY
+    description: "Nasdaq vs S&P 500"
 
   - id: XLY_XLP
     numerator: XLY
@@ -345,7 +707,34 @@ ratios:
     denominator: XLU
     description: "Industrials vs Utilities"
 
+  - id: SMH_SPY
+    numerator: SMH
+    denominator: SPY
+    description: "Semiconductors vs Market"
+
+  - id: IYT_SPY
+    numerator: IYT
+    denominator: SPY
+    description: "Transports vs Market"
+
+  - id: XHB_SPY
+    numerator: XHB
+    denominator: SPY
+    description: "Homebuilders vs Market"
+
+  - id: XRT_SPY
+    numerator: XRT
+    denominator: SPY
+    description: "Retail vs Market"
+
+  - id: IBB_SPY
+    numerator: IBB
+    denominator: SPY
+    description: "Biotech vs Market"
+
+  # ---------------------------------------------------------------------------
   # Factor Preferences (risk-on numerator)
+  # ---------------------------------------------------------------------------
   - id: SPHB_SPLV
     numerator: SPHB
     denominator: SPLV
@@ -361,7 +750,9 @@ ratios:
     denominator: USMV
     description: "Quality vs Min Vol"
 
+  # ---------------------------------------------------------------------------
   # Credit (risk-on = tight spreads, HYG/IEF rising)
+  # ---------------------------------------------------------------------------
   - id: HYG_IEF
     numerator: HYG
     denominator: IEF
@@ -372,7 +763,42 @@ ratios:
     denominator: IEF
     description: "IG Corporate vs Treasuries"
 
+  - id: JNK_TLT
+    numerator: JNK
+    denominator: TLT
+    description: "Junk Bonds vs Long Treasuries"
+
+  - id: EMB_AGG
+    numerator: EMB
+    denominator: AGG
+    description: "EM Bonds vs US Aggregate"
+
+  - id: EMB_HYG
+    numerator: EMB
+    denominator: HYG
+    description: "EM vs US High Yield"
+
+  # ---------------------------------------------------------------------------
+  # Rates/Inflation (TIP/IEF rising = inflation expectations up)
+  # ---------------------------------------------------------------------------
+  - id: TIP_IEF
+    numerator: TIP
+    denominator: IEF
+    description: "TIPS vs Treasuries (inflation breakeven proxy)"
+
+  - id: TIP_TLT
+    numerator: TIP
+    denominator: TLT
+    description: "TIPS vs Long Treasuries"
+
+  - id: KRE_VNQ
+    numerator: KRE
+    denominator: VNQ
+    description: "Regional Banks vs REITs (rate sensitivity)"
+
+  # ---------------------------------------------------------------------------
   # Commodities
+  # ---------------------------------------------------------------------------
   - id: COPX_GLD
     numerator: COPX
     denominator: GLD
@@ -388,7 +814,32 @@ ratios:
     denominator: GLD
     description: "Commodities vs Gold"
 
+  - id: XME_GLD
+    numerator: XME
+    denominator: GLD
+    description: "Metals & Mining vs Gold"
+
+  - id: SLV_GLD
+    numerator: SLV
+    denominator: GLD
+    description: "Silver vs Gold ratio"
+
+  # ---------------------------------------------------------------------------
+  # FX (risk-on = carry currencies outperform)
+  # ---------------------------------------------------------------------------
+  - id: FXA_FXY
+    numerator: FXA
+    denominator: FXY
+    description: "AUD vs JPY (carry proxy)"
+
+  - id: FXE_UUP
+    numerator: FXE
+    denominator: UUP
+    description: "Euro vs Dollar"
+
+  # ---------------------------------------------------------------------------
   # Global (risk-on = EM/intl outperformance)
+  # ---------------------------------------------------------------------------
   - id: EEM_SPY
     numerator: EEM
     denominator: SPY
@@ -409,7 +860,9 @@ ratios:
     denominator: SPY
     description: "China vs US"
 
+  # ---------------------------------------------------------------------------
   # Defensive Rotation (risk-off = defensive outperformance, INVERT these)
+  # ---------------------------------------------------------------------------
   - id: XLU_SPY
     numerator: XLU
     denominator: SPY
@@ -427,6 +880,11 @@ ratios:
     denominator: SPY
     invert: true
     description: "Gold vs Market (inverted for risk-on)"
+
+  - id: GDXJ_GLD
+    numerator: GDXJ
+    denominator: GLD
+    description: "Junior Gold Miners vs Gold (risk appetite in gold space)"
 
 # =============================================================================
 # COMPUTED SERIES
@@ -475,6 +933,8 @@ blocks:
         use_features: [z_52w, roc_8w]
       - id: IWM_SPY
         use_features: [z_52w, roc_8w]
+      - id: QQQ_SPY
+        use_features: [z_52w, roc_8w]
       - id: XLY_XLP
         use_features: [z_52w, roc_8w]
       - id: XLF_XLU
@@ -482,6 +942,16 @@ blocks:
       - id: XLK_XLU
         use_features: [z_52w, roc_8w]
       - id: XLI_XLU
+        use_features: [z_52w, roc_8w]
+      - id: SMH_SPY
+        use_features: [z_52w, roc_8w]
+      - id: IYT_SPY
+        use_features: [z_52w, roc_8w]
+      - id: XHB_SPY
+        use_features: [z_52w, roc_8w]
+      - id: XRT_SPY
+        use_features: [z_52w, roc_8w]
+      - id: IBB_SPY
         use_features: [z_52w, roc_8w]
 
   - name: factor_prefs
@@ -501,10 +971,20 @@ blocks:
         use_features: [z_52w, roc_8w]
       - id: LQD_IEF
         use_features: [z_52w, roc_8w]
+      - id: JNK_TLT
+        use_features: [z_52w, roc_8w]
+      - id: EMB_AGG
+        use_features: [z_52w, roc_8w]
       - id: BAMLH0A0HYM2
         use_features: [z_52w, roc_8w]
         invert: true
       - id: BAMLC0A0CM
+        use_features: [z_52w]
+        invert: true
+      - id: BAMLH0A1HYBB
+        use_features: [z_52w]
+        invert: true
+      - id: BAMLH0A2HYB
         use_features: [z_52w]
         invert: true
 
@@ -513,9 +993,29 @@ blocks:
     members:
       - id: T10Y2Y
         use_features: [z_104w, roc_13w]
+      - id: T10Y3M
+        use_features: [z_104w, roc_13w]
       - id: DFII10
         use_features: [z_104w]
+      - id: DFII5
+        use_features: [z_104w]
       - id: T10YIE
+        use_features: [z_52w, roc_8w]
+      - id: T5YIE
+        use_features: [z_52w, roc_8w]
+      - id: T5YIFR
+        use_features: [z_52w, roc_8w]
+
+  - name: inflation
+    description: "Inflation signals"
+    members:
+      - id: TIP_IEF
+        use_features: [z_52w, roc_8w]
+      - id: TIP_TLT
+        use_features: [z_52w, roc_8w]
+      - id: T10YIE
+        use_features: [z_52w, roc_8w]
+      - id: T5YIFR
         use_features: [z_52w, roc_8w]
 
   - name: fx
@@ -525,7 +1025,14 @@ blocks:
         use_features: [z_52w, roc_8w]
       - id: CADJPY
         use_features: [z_52w, roc_8w]
+      - id: FXA_FXY
+        use_features: [z_52w, roc_8w]
+      - id: FXE_UUP
+        use_features: [z_52w, roc_8w]
       - id: UUP
+        use_features: [z_52w, roc_8w]
+        invert: true
+      - id: DTWEXBGS
         use_features: [z_52w, roc_8w]
         invert: true
 
@@ -537,6 +1044,10 @@ blocks:
       - id: USO_GLD
         use_features: [z_52w, roc_8w]
       - id: DBC_GLD
+        use_features: [z_52w, roc_8w]
+      - id: XME_GLD
+        use_features: [z_52w, roc_8w]
+      - id: SLV_GLD
         use_features: [z_52w, roc_8w]
 
   - name: vol_liquidity
@@ -550,6 +1061,15 @@ blocks:
         invert: true
       - id: NFCI
         use_features: [z_104w]
+        invert: true
+      - id: ANFCI
+        use_features: [z_104w]
+        invert: true
+      - id: STLFSI4
+        use_features: [z_104w]
+        invert: true
+      - id: TEDRATE
+        use_features: [z_52w]
         invert: true
       - id: RATES_VOL_PROXY_21D
         use_features: [z_52w, pctile_52w]
@@ -566,6 +1086,8 @@ blocks:
         use_features: [z_52w, roc_13w]
       - id: FXI_SPY
         use_features: [z_52w, roc_8w]
+      - id: EMB_HYG
+        use_features: [z_52w, roc_8w]
 
   - name: defensive_rotation
     description: "Defensive sector rotation (inverted for risk-on)"
@@ -580,13 +1102,33 @@ blocks:
         use_features: [z_52w, roc_8w]
         invert: true
 
+  - name: housing
+    description: "Housing market indicators"
+    members:
+      - id: XHB_SPY
+        use_features: [z_52w, roc_8w]
+      - id: KRE_VNQ
+        use_features: [z_52w, roc_8w]
+      - id: PERMIT
+        use_features: [z_104w, roc_26w]
+      - id: HOUST
+        use_features: [z_104w, roc_26w]
+
   - name: macro_slow
     description: "Slow-moving macro indicators"
     members:
       - id: ICSA
         use_features: [z_104w, roc_26w]
         invert: true
+      - id: CCSA
+        use_features: [z_104w, roc_26w]
+        invert: true
       - id: PERMIT
         use_features: [z_104w, roc_26w]
       - id: UMCSENT
         use_features: [z_104w, roc_26w]
+      - id: INDPRO
+        use_features: [z_104w, roc_26w]
+      - id: UNRATE
+        use_features: [z_104w, roc_26w]
+        invert: true

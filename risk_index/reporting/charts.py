@@ -227,17 +227,36 @@ def create_checklist_score_chart(
     Returns:
         Plotly figure
     """
-    if COL_CHECKLIST_SCORE not in checklist_df.columns:
-        return go.Figure()
-
-    score = checklist_df[COL_CHECKLIST_SCORE]
-
     fig = go.Figure()
+
+    # Handle missing column
+    if COL_CHECKLIST_SCORE not in checklist_df.columns:
+        fig.add_annotation(
+            text="No checklist score data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    score = checklist_df[COL_CHECKLIST_SCORE].dropna()
+
+    # Handle empty data
+    if score.empty:
+        fig.add_annotation(
+            text="No data available for selected date range",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
 
     fig.add_trace(
         go.Scatter(
             x=score.index,
-            y=score,
+            y=score.values,  # Use .values explicitly
             mode="lines",
             name="Checklist Score",
             line=dict(color=COLORS["medium"], width=2),
@@ -249,6 +268,7 @@ def create_checklist_score_chart(
     # Add threshold lines
     fig.add_hline(y=75, line_dash="dash", line_color="green", annotation_text="Confirmed Risk-On")
     fig.add_hline(y=50, line_dash="dash", line_color="orange", annotation_text="On Watch")
+    fig.add_hline(y=25, line_dash="dash", line_color="red", annotation_text="Risk-Off")
 
     fig.update_layout(
         title=title,
@@ -256,6 +276,7 @@ def create_checklist_score_chart(
         yaxis_title="Score (0-100)",
         yaxis=dict(range=[0, 100]),
         height=400,
+        hovermode="x unified",
     )
 
     return fig
@@ -398,6 +419,306 @@ def save_chart_as_png(
         return None
 
     return path
+
+
+def create_composition_pie(
+    weights_df: pd.DataFrame,
+    speed: str,
+    title: str | None = None,
+) -> go.Figure:
+    """Create pie chart of composite block weights.
+
+    Args:
+        weights_df: DataFrame with 'block' and 'weight' columns
+        speed: Composite speed (fast, medium, slow)
+        title: Chart title (auto-generated if None)
+
+    Returns:
+        Plotly figure
+    """
+    if weights_df.empty:
+        return go.Figure()
+
+    if title is None:
+        title = f"{speed.title()} Composite Weights"
+
+    # Generate colors based on position
+    colors = px.colors.qualitative.Set2[:len(weights_df)]
+
+    fig = go.Figure(
+        go.Pie(
+            labels=weights_df["block"],
+            values=weights_df["weight"],
+            marker_colors=colors,
+            hole=0.4,
+            textinfo="percent+label",
+            textposition="outside",
+            pull=[0.02] * len(weights_df),  # Slight separation
+        )
+    )
+
+    fig.update_layout(
+        title=title,
+        height=400,
+        showlegend=False,
+    )
+
+    return fig
+
+
+def create_equity_curves(
+    backtest_results: dict[str, dict],
+    title: str = "SPY Strategy Equity Curves",
+) -> go.Figure:
+    """Create equity curve chart comparing regime strategies.
+
+    Args:
+        backtest_results: Dict mapping speed name to backtest result dict
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    # Color mapping for each speed
+    speed_colors = {
+        "Fast": COLORS["fast"],
+        "Medium": COLORS["medium"],
+        "Slow": COLORS["slow"],
+    }
+
+    # Add strategy equity curves
+    for speed, result in backtest_results.items():
+        if result is None:
+            continue
+
+        equity = result.get("equity_curve")
+        if equity is None:
+            continue
+
+        fig.add_trace(
+            go.Scatter(
+                x=equity.index,
+                y=equity,
+                mode="lines",
+                name=f"{speed} Strategy",
+                line=dict(color=speed_colors.get(speed, "gray"), width=2),
+            )
+        )
+
+    # Add buy-and-hold line (from first valid result)
+    first_result = next((r for r in backtest_results.values() if r is not None), None)
+    if first_result and "buy_hold_equity" in first_result:
+        bh_equity = first_result["buy_hold_equity"]
+        fig.add_trace(
+            go.Scatter(
+                x=bh_equity.index,
+                y=bh_equity,
+                mode="lines",
+                name="Buy & Hold",
+                line=dict(color="gray", width=2, dash="dash"),
+            )
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Portfolio Value (Base 100)",
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+        height=500,
+    )
+
+    return fig
+
+
+def create_regime_equity_with_shading(
+    backtest_result: dict,
+    regimes: pd.Series,
+    title: str = "Strategy Equity with Regime Shading",
+) -> go.Figure:
+    """Create equity curve with regime period shading.
+
+    Args:
+        backtest_result: Single backtest result dict
+        regimes: Regime series corresponding to the backtest
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    equity = backtest_result.get("equity_curve")
+    bh_equity = backtest_result.get("buy_hold_equity")
+
+    if equity is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=equity.index,
+                y=equity,
+                mode="lines",
+                name="Strategy",
+                line=dict(color=COLORS["medium"], width=2),
+            )
+        )
+
+    if bh_equity is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=bh_equity.index,
+                y=bh_equity,
+                mode="lines",
+                name="Buy & Hold",
+                line=dict(color="gray", width=2, dash="dash"),
+            )
+        )
+
+    # Add regime shading
+    if not regimes.empty:
+        add_regime_shading(fig, regimes)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Portfolio Value (Base 100)",
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+        height=450,
+    )
+
+    return fig
+
+
+def create_spy_regime_panel_chart(
+    spy_prices: pd.Series,
+    composite_scores: pd.DataFrame,
+    regimes: pd.Series,
+    title: str = "SPY with Risk Regime Indicator",
+) -> go.Figure:
+    """Create multi-panel chart like Daily Number Risk-On/Off indicator.
+
+    Args:
+        spy_prices: SPY price series
+        composite_scores: DataFrame with composite scores
+        regimes: Regime series for shading
+        title: Chart title
+
+    Returns:
+        Plotly figure with 2 panels
+    """
+    fig = make_subplots(
+        rows=2, cols=1,
+        shared_xaxes=True,
+        vertical_spacing=0.08,
+        row_heights=[0.7, 0.3],
+        subplot_titles=["S&P 500 (SPY)", "Risk Regime Indicator"],
+    )
+
+    # Panel 1: SPY price
+    if not spy_prices.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=spy_prices.index,
+                y=spy_prices.values,
+                name="SPY",
+                line=dict(color="black", width=1.5),
+                hovertemplate="SPY: $%{y:.2f}<extra></extra>",
+            ),
+            row=1, col=1,
+        )
+
+    # Panel 2: Composite score oscillator
+    composite_col = COL_COMPOSITE_MEDIUM
+    if composite_col in composite_scores.columns:
+        score = composite_scores[composite_col].dropna()
+        if not score.empty:
+            # Color based on value
+            colors = [
+                COLORS["risk_on"] if v > 0.5 else
+                COLORS["risk_off"] if v < -0.5 else
+                COLORS["neutral"]
+                for v in score.values
+            ]
+            fig.add_trace(
+                go.Scatter(
+                    x=score.index,
+                    y=score.values,
+                    name="Composite",
+                    line=dict(color=COLORS["medium"], width=2),
+                    fill="tozeroy",
+                    fillcolor="rgba(155, 89, 182, 0.2)",
+                    hovertemplate="Score: %{y:.2f}<extra></extra>",
+                ),
+                row=2, col=1,
+            )
+
+    # Add threshold lines to panel 2
+    fig.add_hline(y=0.5, line_dash="dash", line_color="green", row=2, col=1)
+    fig.add_hline(y=-0.5, line_dash="dash", line_color="red", row=2, col=1)
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", row=2, col=1)
+
+    # Add regime shading to both panels
+    if not regimes.empty:
+        _add_regime_shading_to_subplot(fig, regimes, row=1)
+        _add_regime_shading_to_subplot(fig, regimes, row=2)
+
+    fig.update_layout(
+        title=title,
+        height=600,
+        showlegend=False,
+        hovermode="x unified",
+    )
+    fig.update_yaxes(title_text="Price ($)", row=1, col=1)
+    fig.update_yaxes(title_text="Z-Score", row=2, col=1)
+
+    return fig
+
+
+def _add_regime_shading_to_subplot(
+    fig: go.Figure,
+    regime_series: pd.Series,
+    row: int,
+) -> None:
+    """Add regime shading to a specific subplot row.
+
+    Args:
+        fig: Plotly figure with subplots
+        regime_series: Series of regime labels
+        row: Row number for the subplot
+    """
+    if regime_series.empty:
+        return
+
+    # Find regime spans
+    spans = []
+    current_regime = regime_series.iloc[0]
+    start_date = regime_series.index[0]
+
+    for i, (date, regime) in enumerate(regime_series.items()):
+        if regime != current_regime or i == len(regime_series) - 1:
+            spans.append((start_date, date, current_regime))
+            current_regime = regime
+            start_date = date
+
+    # Add shapes for each span
+    for start, end, regime in spans:
+        if regime == Regime.RISK_ON.value:
+            color = "rgba(46, 204, 113, 0.15)"
+        elif regime == Regime.RISK_OFF.value:
+            color = "rgba(231, 76, 60, 0.15)"
+        else:
+            continue  # Don't shade neutral
+
+        fig.add_vrect(
+            x0=start,
+            x1=end,
+            fillcolor=color,
+            line_width=0,
+            layer="below",
+            row=row, col=1,
+        )
 
 
 def save_all_charts(

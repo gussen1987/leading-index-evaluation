@@ -7,8 +7,10 @@ correlation_policy:
   max_combined_weight: 0.25
 
 # Composite definitions
+# Note: Weights are normalized to sum to 1.0 for each composite
 composites:
   # Fast composite (4-8 week horizon)
+  # Original weights: 1.5 + 1.2 + 1.5 + 1.0 + 0.8 = 6.0
   - name: fast_composite
     speed: fast
     z_window: 104
@@ -16,17 +18,18 @@ composites:
     objective: "Maximize forward return IC, reduce tail drawdown"
     blocks:
       - block: equity_leadership
-        weight: 1.5
+        weight: 0.250
       - block: factor_prefs
-        weight: 1.2
+        weight: 0.200
       - block: vol_liquidity
-        weight: 1.5
+        weight: 0.250
       - block: credit
-        weight: 1.0
+        weight: 0.167
       - block: defensive_rotation
-        weight: 0.8
+        weight: 0.133
 
   # Medium composite (13-26 week horizon)
+  # Original weights: 1.5 + 1.2 + 1.0 + 1.2 + 0.8 + 1.0 + 0.6 + 0.8 + 0.6 = 8.7
   - name: medium_composite
     speed: medium
     z_window: 156
@@ -34,21 +37,26 @@ composites:
     objective: "Classify Risk-Off before 16-24 week drawdowns, balance precision/recall"
     blocks:
       - block: credit
-        weight: 1.5
+        weight: 0.172
       - block: rates
-        weight: 1.2
+        weight: 0.138
       - block: fx
-        weight: 1.0
+        weight: 0.115
       - block: global
-        weight: 1.2
+        weight: 0.138
       - block: equity_leadership
-        weight: 0.8
+        weight: 0.092
       - block: vol_liquidity
-        weight: 1.0
+        weight: 0.115
       - block: commodities
-        weight: 0.6
+        weight: 0.069
+      - block: inflation
+        weight: 0.092
+      - block: housing
+        weight: 0.069
 
   # Slow composite (26-52 week horizon)
+  # Original weights: 1.5 + 1.5 + 1.5 + 1.0 + 0.8 + 0.8 + 0.7 = 7.8
   - name: slow_composite
     speed: slow
     z_window: 260
@@ -56,14 +64,16 @@ composites:
     objective: "Correlate with macro cycle risk, lead 52-week returns"
     blocks:
       - block: rates
-        weight: 1.5
+        weight: 0.192
       - block: credit
-        weight: 1.5
+        weight: 0.192
       - block: macro_slow
-        weight: 1.5
+        weight: 0.192
       - block: global
-        weight: 1.0
+        weight: 0.128
       - block: commodities
-        weight: 0.8
+        weight: 0.103
       - block: fx
-        weight: 0.8
+        weight: 0.103
+      - block: housing
+        weight: 0.090
