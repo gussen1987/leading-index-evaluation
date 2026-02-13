@@ -1,14 +1,17 @@
 """Market breadth data fetching and calculation module.
 
-Fetches S&P 500, 400, 600 constituents and calculates breadth metrics:
+Fetches S&P 500, 400, 600, NYSE, NASDAQ constituents and calculates breadth metrics:
 - Advancers/Decliners
 - % Above 50/200 day moving averages
 - % at N-month highs/lows
 - % Overbought/Oversold (RSI-based)
+
+Also provides Finviz scraper for current-day market breadth summary.
 """
 
 from __future__ import annotations
 
+import re
 import time
 from datetime import datetime
 from pathlib import Path
@@ -29,17 +32,27 @@ logger = get_logger(__name__)
 # Directory for cached constituent lists
 CONSTITUENTS_DIR = DATA_DIR / "constituents"
 BREADTH_CACHE_FILE = PROCESSED_DIR / "breadth_latest.parquet"
+BREADTH_SUMMARY_CACHE = PROCESSED_DIR / "breadth_summary.parquet"
 
 # Wikipedia URLs for constituent lists
 SP500_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_500_companies"
 SP400_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_400_companies"
 SP600_URL = "https://en.wikipedia.org/wiki/List_of_S%26P_600_companies"
 
-IndexType = Literal["SP500", "SP400", "SP600"]
+# NASDAQ API for exchange constituents
+NASDAQ_SCREENER_URL = "https://api.nasdaq.com/api/screener/stocks"
 
-# User-agent header to avoid Wikipedia blocking
+# iShares ETF holdings for Russell indices
+ISHARES_HOLDINGS_BASE = "https://www.ishares.com/us/products"
+RUSSELL_2000_URL = f"{ISHARES_HOLDINGS_BASE}/239710/ishares-russell-2000-etf/1467271812596.ajax?fileType=csv&fileName=IWM_holdings&dataType=fund"
+RUSSELL_1000_URL = f"{ISHARES_HOLDINGS_BASE}/239707/ishares-russell-1000-etf/1467271812596.ajax?fileType=csv&fileName=IWB_holdings&dataType=fund"
+
+IndexType = Literal["SP500", "SP400", "SP600", "NYSE", "NASDAQ", "AMEX", "Russell2000", "Russell1000"]
+
+# User-agent header
 HEADERS = {
-    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+    "Accept": "application/json, text/html",
 }
 
 
@@ -165,8 +178,232 @@ def get_sp600_constituents(use_cache: bool = True) -> list[str]:
         return []
 
 
+def _fetch_exchange_constituents(exchange: str, use_cache: bool = True) -> list[str]:
+    """Fetch constituents for an exchange from NASDAQ API.
+
+    Args:
+        exchange: Exchange name (nyse, nasdaq, amex)
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols
+    """
+    ensure_dirs()
+    cache_file = CONSTITUENTS_DIR / f"{exchange}_constituents.csv"
+
+    if use_cache and cache_file.exists():
+        # Check cache age - refresh if older than 7 days
+        cache_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
+        cache_age_days = (datetime.now() - cache_mtime).days
+        if cache_age_days < 7:
+            df = pd.read_csv(cache_file)
+            return df["Symbol"].tolist()
+
+    try:
+        url = f"{NASDAQ_SCREENER_URL}?tableonly=true&limit=100&offset=0&exchange={exchange}&download=true"
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+
+        data = response.json()
+        rows = data.get("data", {}).get("rows", [])
+
+        if not rows:
+            logger.warning(f"No data returned for {exchange}")
+            if cache_file.exists():
+                df = pd.read_csv(cache_file)
+                return df["Symbol"].tolist()
+            return []
+
+        # Extract symbols, clean them
+        tickers = []
+        for row in rows:
+            symbol = row.get("symbol", "")
+            if symbol and len(symbol) <= 5 and symbol.isalpha():
+                # Skip warrants, units, etc.
+                tickers.append(symbol)
+
+        # Cache the result
+        pd.DataFrame({"Symbol": tickers}).to_csv(cache_file, index=False)
+        logger.info(f"Fetched {len(tickers)} {exchange.upper()} constituents from NASDAQ API")
+        return tickers
+
+    except Exception as e:
+        logger.error(f"Failed to fetch {exchange} constituents: {e}")
+        if cache_file.exists():
+            df = pd.read_csv(cache_file)
+            return df["Symbol"].tolist()
+        return []
+
+
+def get_nyse_constituents(use_cache: bool = True) -> list[str]:
+    """Fetch NYSE listed stocks.
+
+    Args:
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols (~2700 stocks)
+    """
+    return _fetch_exchange_constituents("nyse", use_cache)
+
+
+def get_nasdaq_constituents(use_cache: bool = True) -> list[str]:
+    """Fetch NASDAQ listed stocks.
+
+    Args:
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols (~4000 stocks)
+    """
+    return _fetch_exchange_constituents("nasdaq", use_cache)
+
+
+def get_amex_constituents(use_cache: bool = True) -> list[str]:
+    """Fetch AMEX listed stocks.
+
+    Args:
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols (~300 stocks)
+    """
+    return _fetch_exchange_constituents("amex", use_cache)
+
+
+def _fetch_ishares_holdings(url: str, index_name: str, use_cache: bool = True) -> list[str]:
+    """Fetch ETF holdings from iShares CSV.
+
+    Args:
+        url: iShares holdings CSV URL
+        index_name: Name for caching (e.g., "russell2000")
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols
+    """
+    ensure_dirs()
+    cache_file = CONSTITUENTS_DIR / f"{index_name}_constituents.csv"
+
+    if use_cache and cache_file.exists():
+        cache_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
+        cache_age_days = (datetime.now() - cache_mtime).days
+        if cache_age_days < 7:
+            df = pd.read_csv(cache_file)
+            return df["Symbol"].tolist()
+
+    try:
+        response = requests.get(url, headers=HEADERS, timeout=30)
+        response.raise_for_status()
+
+        # Parse CSV - skip first 9 rows of metadata
+        lines = response.text.split("\n")
+        csv_content = "\n".join(lines[9:])
+        df = pd.read_csv(StringIO(csv_content))
+
+        # Filter to equity and valid tickers
+        equity = df[df["Asset Class"] == "Equity"]
+        tickers = []
+        for t in equity["Ticker"].dropna().tolist():
+            if isinstance(t, str):
+                t = t.strip()
+                if len(t) <= 5 and t.isalpha():
+                    tickers.append(t)
+
+        # Cache result
+        pd.DataFrame({"Symbol": tickers}).to_csv(cache_file, index=False)
+        logger.info(f"Fetched {len(tickers)} {index_name} constituents from iShares")
+        return tickers
+
+    except Exception as e:
+        logger.error(f"Failed to fetch {index_name} constituents: {e}")
+        if cache_file.exists():
+            df = pd.read_csv(cache_file)
+            return df["Symbol"].tolist()
+        return []
+
+
+def get_russell2000_constituents(use_cache: bool = True) -> list[str]:
+    """Fetch Russell 2000 constituents from iShares IWM holdings.
+
+    Args:
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols (~2000 small-cap stocks)
+    """
+    return _fetch_ishares_holdings(RUSSELL_2000_URL, "russell2000", use_cache)
+
+
+def get_russell1000_constituents(use_cache: bool = True) -> list[str]:
+    """Fetch Russell 1000 constituents from iShares IWB holdings.
+
+    Args:
+        use_cache: Whether to use cached CSV if available
+
+    Returns:
+        List of ticker symbols (~1000 large/mid-cap stocks)
+    """
+    return _fetch_ishares_holdings(RUSSELL_1000_URL, "russell1000", use_cache)
+
+
+def fetch_finviz_breadth() -> dict:
+    """Scrape current market breadth from Finviz.
+
+    Returns:
+        Dict with current breadth metrics:
+        - advancing: count of advancing stocks
+        - declining: count of declining stocks
+        - advancing_pct: percentage advancing
+        - declining_pct: percentage declining
+        - new_high: count at new highs
+        - new_low: count at new lows
+        - timestamp: data timestamp
+    """
+    try:
+        url = "https://finviz.com/"
+        response = requests.get(url, headers=HEADERS, timeout=15)
+        response.raise_for_status()
+
+        text = response.text
+
+        # Parse HTML structure: <p>Advancing</p><p>52.1% (2897)</p>
+        adv_match = re.search(r"Advancing</p><p>([\d.]+)%\s*\((\d+)\)", text)
+        dec_match = re.search(r"Declining</p><p>\((\d+)\)\s*([\d.]+)%", text)
+        high_match = re.search(r"New High</p><p>([\d.]+)%\s*\((\d+)\)", text)
+        low_match = re.search(r"New Low</p><p>\((\d+)\)\s*([\d.]+)%", text)
+
+        result = {
+            "timestamp": datetime.now().isoformat(),
+            "source": "finviz",
+        }
+
+        if adv_match:
+            result["advancing_pct"] = float(adv_match.group(1))
+            result["advancing"] = int(adv_match.group(2))
+
+        if dec_match:
+            result["declining"] = int(dec_match.group(1))
+            result["declining_pct"] = float(dec_match.group(2))
+
+        if high_match:
+            result["new_high_pct"] = float(high_match.group(1))
+            result["new_high"] = int(high_match.group(2))
+
+        if low_match:
+            result["new_low"] = int(low_match.group(1))
+            result["new_low_pct"] = float(low_match.group(2))
+
+        logger.info(f"Finviz breadth: {result.get('advancing', 0)} adv / {result.get('declining', 0)} dec")
+        return result
+
+    except Exception as e:
+        logger.error(f"Failed to fetch Finviz breadth: {e}")
+        return {}
+
+
 def get_all_constituents(use_cache: bool = True) -> dict[IndexType, list[str]]:
-    """Get all S&P index constituents.
+    """Get all index constituents.
 
     Returns:
         Dict mapping index name to list of tickers
@@ -175,6 +412,31 @@ def get_all_constituents(use_cache: bool = True) -> dict[IndexType, list[str]]:
         "SP500": get_sp500_constituents(use_cache),
         "SP400": get_sp400_constituents(use_cache),
         "SP600": get_sp600_constituents(use_cache),
+    }
+
+
+def get_exchange_constituents(use_cache: bool = True) -> dict[str, list[str]]:
+    """Get all exchange constituents (NYSE, NASDAQ, AMEX).
+
+    Returns:
+        Dict mapping exchange name to list of tickers
+    """
+    return {
+        "NYSE": get_nyse_constituents(use_cache),
+        "NASDAQ": get_nasdaq_constituents(use_cache),
+        "AMEX": get_amex_constituents(use_cache),
+    }
+
+
+def get_russell_constituents(use_cache: bool = True) -> dict[str, list[str]]:
+    """Get Russell index constituents.
+
+    Returns:
+        Dict mapping index name to list of tickers
+    """
+    return {
+        "Russell2000": get_russell2000_constituents(use_cache),
+        "Russell1000": get_russell1000_constituents(use_cache),
     }
 
 
@@ -728,13 +990,22 @@ def prepare_heatmap_data(
         "SP500": "S&P 500 - Large Cap",
         "SP400": "S&P 400 - Mid Cap",
         "SP600": "S&P 600 - Small Cap",
+        "NYSE": "NYSE",
+        "NASDAQ": "NASDAQ",
+        "AMEX": "AMEX",
+        "Russell2000": "Russell 2000 - Small Cap",
+        "Russell1000": "Russell 1000 - Large/Mid Cap",
     }
+
+    # Determine which indices are present in data
+    all_possible = ["SP500", "SP400", "SP600", "NYSE", "NASDAQ", "AMEX", "Russell2000", "Russell1000"]
+    available_indices = [idx for idx in all_possible if idx in breadth_df["index"].unique()]
 
     rows = []
 
     if metric_type == "advancers":
         # Advancers & Decliners
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             # Advancers row
@@ -759,7 +1030,7 @@ def prepare_heatmap_data(
             ("pct_above_100ma", "% Above 100 Day MA"),
             ("pct_above_200ma", "% Above 200 Day MA"),
         ]
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             for metric_col, metric_label in ma_metrics:
@@ -775,7 +1046,7 @@ def prepare_heatmap_data(
 
     elif metric_type == "golden_cross":
         # Golden Cross (50MA > 200MA) percentage
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             row = {"Index": index_display.get(idx, idx), "Metric": "% 50-Day > 200-Day MA"}
@@ -790,7 +1061,7 @@ def prepare_heatmap_data(
 
     elif metric_type == "trend_count":
         # Trend Count (4 of 4 and 0 of 4 criteria)
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             # 4 of 4 row
@@ -826,7 +1097,7 @@ def prepare_heatmap_data(
             "pct_12mo_lows": "% at 12 Month Lows",
         }
 
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             for metric_col, metric_label in metrics_map.items():
@@ -839,7 +1110,7 @@ def prepare_heatmap_data(
 
     elif metric_type == "overbought":
         # Overbought/Oversold
-        for idx in ["SP500", "SP400", "SP600"]:
+        for idx in available_indices:
             idx_data = breadth_df[breadth_df["index"] == idx].set_index("date")
 
             # Overbought row
@@ -859,6 +1130,209 @@ def prepare_heatmap_data(
             rows.append(os_row)
 
     return pd.DataFrame(rows)
+
+
+def prepare_breadth_summary(breadth_df: pd.DataFrame, finviz_data: dict = None) -> pd.DataFrame:
+    """Prepare a unified breadth summary across all indices.
+
+    Shows current-day key metrics for all indices in one table.
+
+    Args:
+        breadth_df: Raw breadth metrics DataFrame
+        finviz_data: Optional Finviz current data dict
+
+    Returns:
+        DataFrame with summary metrics per index
+    """
+    if breadth_df.empty:
+        return pd.DataFrame()
+
+    # Get latest date
+    latest_date = breadth_df["date"].max()
+    latest_df = breadth_df[breadth_df["date"] == latest_date].copy()
+
+    index_display = {
+        "SP500": "S&P 500",
+        "SP400": "S&P 400",
+        "SP600": "S&P 600",
+        "NYSE": "NYSE",
+        "NASDAQ": "NASDAQ",
+        "AMEX": "AMEX",
+        "Russell2000": "Russell 2000",
+        "Russell1000": "Russell 1000",
+    }
+
+    rows = []
+    for idx in latest_df["index"].unique():
+        row_data = latest_df[latest_df["index"] == idx].iloc[0]
+
+        row = {
+            "Index": index_display.get(idx, idx),
+            "Advancers": int(row_data.get("advancers", 0)),
+            "Decliners": int(row_data.get("decliners", 0)),
+            "A/D Ratio": round(row_data.get("advancers", 0) / max(row_data.get("decliners", 1), 1), 2),
+            "% > 50 DMA": round(row_data.get("pct_above_50ma", 0), 1),
+            "% > 200 DMA": round(row_data.get("pct_above_200ma", 0), 1),
+            "% Golden Cross": round(row_data.get("pct_golden_cross", 0), 1),
+            "% Overbought": round(row_data.get("pct_overbought", 0), 1),
+            "% Oversold": round(row_data.get("pct_oversold", 0), 1),
+        }
+        rows.append(row)
+
+    # Add Finviz row if available (market-wide)
+    if finviz_data and finviz_data.get("advancing"):
+        finviz_row = {
+            "Index": "US Market (Finviz)",
+            "Advancers": finviz_data.get("advancing", 0),
+            "Decliners": finviz_data.get("declining", 0),
+            "A/D Ratio": round(finviz_data.get("advancing", 0) / max(finviz_data.get("declining", 1), 1), 2),
+            "% > 50 DMA": None,
+            "% > 200 DMA": None,
+            "% Golden Cross": None,
+            "% Overbought": None,
+            "% Oversold": None,
+        }
+        rows.append(finviz_row)
+
+    return pd.DataFrame(rows)
+
+
+def compute_exchange_breadth(
+    indices: list[str] = None,
+    lookback_days: int = 10,
+    max_stocks_per_index: int = None,
+    progress_callback=None,
+) -> pd.DataFrame:
+    """Compute breadth for exchange-based indices and Russell.
+
+    Args:
+        indices: List of indices to compute (default: NYSE, NASDAQ, Russell2000, Russell1000)
+        lookback_days: Number of trading days to compute
+        max_stocks_per_index: Limit stocks per index (for faster testing)
+        progress_callback: Optional callback for progress updates
+
+    Returns:
+        DataFrame with breadth metrics
+    """
+    if indices is None:
+        indices = ["NYSE", "NASDAQ", "Russell2000", "Russell1000"]
+
+    index_map = {
+        "NYSE": get_nyse_constituents,
+        "NASDAQ": get_nasdaq_constituents,
+        "AMEX": get_amex_constituents,
+        "Russell2000": get_russell2000_constituents,
+        "Russell1000": get_russell1000_constituents,
+    }
+
+    all_metrics = []
+
+    for index_name in indices:
+        if index_name not in index_map:
+            continue
+
+        tickers = index_map[index_name](use_cache=True)
+
+        if max_stocks_per_index and len(tickers) > max_stocks_per_index:
+            logger.info(f"Limiting {index_name} to {max_stocks_per_index} stocks (from {len(tickers)})")
+            tickers = tickers[:max_stocks_per_index]
+
+        if not tickers:
+            logger.warning(f"No constituents for {index_name}, skipping")
+            continue
+
+        logger.info(f"Computing breadth for {index_name} ({len(tickers)} stocks)...")
+        metrics_df = compute_breadth_metrics_for_index(
+            tickers,
+            index_name,
+            lookback_days,
+            progress_callback,
+        )
+
+        if not metrics_df.empty:
+            all_metrics.append(metrics_df)
+
+    if not all_metrics:
+        return pd.DataFrame()
+
+    return pd.concat(all_metrics, ignore_index=True)
+
+
+def fetch_all_breadth_data(
+    include_exchanges: bool = False,
+    include_russell: bool = False,
+    lookback_days: int = 10,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """Fetch breadth data for S&P indices and optionally exchanges/Russell.
+
+    Args:
+        include_exchanges: Include NYSE/NASDAQ (~6000 stocks)
+        include_russell: Include Russell 1000/2000 (~3000 stocks)
+        lookback_days: Number of trading days of history
+        use_cache: Use cached breadth data if available
+        force_refresh: Force refresh even if cache exists
+
+    Returns:
+        DataFrame with all breadth metrics
+    """
+    # Always get S&P breadth
+    sp_breadth = fetch_breadth_data(
+        lookback_days=lookback_days,
+        use_cache=use_cache,
+        force_refresh=force_refresh,
+    )
+
+    if not include_exchanges and not include_russell:
+        return sp_breadth
+
+    # Build list of additional indices to compute
+    additional_indices = []
+    if include_exchanges:
+        additional_indices.extend(["NYSE", "NASDAQ"])
+    if include_russell:
+        additional_indices.extend(["Russell2000", "Russell1000"])
+
+    if not additional_indices:
+        return sp_breadth
+
+    # Get exchange/Russell breadth (this is slower)
+    exchange_cache = PROCESSED_DIR / "breadth_exchanges.parquet"
+
+    exchange_breadth = pd.DataFrame()
+    if use_cache and not force_refresh and exchange_cache.exists():
+        try:
+            cache_mtime = datetime.fromtimestamp(exchange_cache.stat().st_mtime)
+            cache_age_hours = (datetime.now() - cache_mtime).total_seconds() / 3600
+            if cache_age_hours < 12:
+                logger.info(f"Loading cached exchange/Russell breadth (age: {cache_age_hours:.1f} hours)")
+                exchange_breadth = pd.read_parquet(exchange_cache)
+                # Check if all requested indices are in cache
+                cached_indices = set(exchange_breadth["index"].unique())
+                if all(idx in cached_indices for idx in additional_indices):
+                    # Filter to only requested indices
+                    exchange_breadth = exchange_breadth[exchange_breadth["index"].isin(additional_indices)]
+                else:
+                    exchange_breadth = pd.DataFrame()  # Need to recompute
+        except Exception as e:
+            logger.warning(f"Could not read exchange cache: {e}")
+
+    if exchange_breadth.empty:
+        idx_str = "/".join(additional_indices)
+        logger.info(f"Computing breadth for {idx_str} (this may take 10-15 minutes)...")
+        exchange_breadth = compute_exchange_breadth(
+            indices=additional_indices,
+            lookback_days=lookback_days,
+        )
+        if not exchange_breadth.empty:
+            exchange_breadth.to_parquet(exchange_cache, index=False)
+
+    # Combine
+    if not exchange_breadth.empty:
+        return pd.concat([sp_breadth, exchange_breadth], ignore_index=True)
+
+    return sp_breadth
 
 
 if __name__ == "__main__":

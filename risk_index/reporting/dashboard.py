@@ -48,7 +48,10 @@ from risk_index.research.backtest_regimes import (
 )
 from risk_index.pipeline.breadth_fetch import (
     fetch_breadth_data,
+    fetch_all_breadth_data,
+    fetch_finviz_breadth,
     prepare_heatmap_data,
+    prepare_breadth_summary,
 )
 
 
@@ -935,19 +938,83 @@ topping process. Conversely, improving breadth during a pullback suggests underl
 
         # Load breadth data with caching
         try:
+            # Options for which indices to include
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                include_exchanges = st.checkbox("Include NYSE/NASDAQ", value=False,
+                    help="Add NYSE (~2300) and NASDAQ (~4000) stocks")
+            with col2:
+                include_russell = st.checkbox("Include Russell 1000/2000", value=False,
+                    help="Add Russell 1000 (~1000) and Russell 2000 (~2000) stocks")
+            with col3:
+                if st.button("Refresh All Data"):
+                    with st.spinner("Fetching all breadth data (10-15 minutes)..."):
+                        breadth_df = fetch_all_breadth_data(
+                            include_exchanges=include_exchanges,
+                            include_russell=include_russell,
+                            lookback_days=10,
+                            use_cache=False,
+                            force_refresh=True,
+                        )
+                    st.rerun()
+
             with st.spinner("Loading breadth data..."):
-                breadth_df = fetch_breadth_data(lookback_days=10, use_cache=True)
+                breadth_df = fetch_all_breadth_data(
+                    include_exchanges=include_exchanges,
+                    include_russell=include_russell,
+                    lookback_days=10,
+                    use_cache=True,
+                )
 
             if breadth_df.empty:
-                st.warning("No breadth data available. Run fetch to populate data.")
-                if st.button("Fetch Breadth Data Now"):
-                    with st.spinner("Fetching breadth data (this may take 2-3 minutes)..."):
-                        breadth_df = fetch_breadth_data(lookback_days=10, use_cache=False, force_refresh=True)
-                    st.rerun()
+                st.warning("No breadth data available. Click 'Refresh All Data' to fetch.")
             else:
                 # Data info
                 latest_date = breadth_df["date"].max()
                 st.caption(f"Data as of: {pd.Timestamp(latest_date).strftime('%Y-%m-%d')}")
+
+                # ------------------------------------------------------------------
+                # 0. Breadth Summary (all indices at a glance)
+                # ------------------------------------------------------------------
+                st.markdown("### Breadth Summary")
+
+                # Fetch Finviz current data for comparison
+                finviz_data = fetch_finviz_breadth()
+
+                summary_df = prepare_breadth_summary(breadth_df, finviz_data)
+                if not summary_df.empty:
+                    def color_summary_row(row):
+                        styles = [""] * len(row)
+                        # Color A/D Ratio
+                        ad_ratio = row.get("A/D Ratio", 1)
+                        if pd.notna(ad_ratio):
+                            if ad_ratio > 1.5:
+                                styles[3] = "background-color: rgba(46, 204, 113, 0.5)"
+                            elif ad_ratio > 1.0:
+                                styles[3] = "background-color: rgba(46, 204, 113, 0.2)"
+                            elif ad_ratio < 0.67:
+                                styles[3] = "background-color: rgba(231, 76, 60, 0.5)"
+                            elif ad_ratio < 1.0:
+                                styles[3] = "background-color: rgba(231, 76, 60, 0.2)"
+                        # Color % > 200 DMA
+                        pct_200 = row.get("% > 200 DMA")
+                        if pd.notna(pct_200):
+                            if pct_200 >= 70:
+                                styles[5] = "background-color: rgba(46, 204, 113, 0.5)"
+                            elif pct_200 >= 50:
+                                styles[5] = "background-color: rgba(46, 204, 113, 0.2)"
+                            elif pct_200 < 40:
+                                styles[5] = "background-color: rgba(231, 76, 60, 0.4)"
+                        return styles
+
+                    styled_summary = summary_df.style.apply(color_summary_row, axis=1)
+                    st.dataframe(styled_summary, width="stretch", hide_index=True)
+
+                    # Add Finviz timestamp if available
+                    if finviz_data and finviz_data.get("timestamp"):
+                        st.caption(f"Finviz data: {finviz_data.get('timestamp', 'N/A')[:19]}")
+
+                st.divider()
 
                 # ------------------------------------------------------------------
                 # 1. Advancers & Decliners Heat Map
@@ -1223,16 +1290,10 @@ It's more useful as a timing tool for entries after pullbacks.
                 else:
                     st.info("No overbought/oversold data available.")
 
-                # Refresh button
+                # Info
                 st.divider()
-                col1, col2 = st.columns([1, 4])
-                with col1:
-                    if st.button("Refresh Breadth Data"):
-                        with st.spinner("Fetching fresh breadth data (2-3 min)..."):
-                            fetch_breadth_data(lookback_days=10, use_cache=False, force_refresh=True)
-                        st.rerun()
-                with col2:
-                    st.caption("First run or refresh takes 2-3 minutes to download ~1500 stock prices.")
+                indices_loaded = breadth_df["index"].unique().tolist()
+                st.caption(f"Indices loaded: {', '.join(indices_loaded)}. Use checkboxes above to add more.")
 
         except Exception as e:
             st.error(f"Error loading breadth data: {e}")
