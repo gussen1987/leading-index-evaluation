@@ -46,6 +46,10 @@ from risk_index.research.backtest_regimes import (
     create_backtest_summary,
     load_spy_prices,
 )
+from risk_index.pipeline.breadth_fetch import (
+    fetch_breadth_data,
+    prepare_heatmap_data,
+)
 
 
 # Page config
@@ -346,12 +350,35 @@ def main():
         st.caption(f"Data as of: {latest_date.strftime('%Y-%m-%d')}")
 
     # Tabs for different views
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7 = st.tabs(
-        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership"]
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
+        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership", "Market Breadth", "Sector Scorecard"]
     )
 
     with tab1:
         st.subheader("Composite Signals Over Time")
+
+        with st.expander("Understanding Composite Signals", expanded=False):
+            st.markdown("""
+**What are Composites?**
+Composites combine multiple market indicators (blocks) into single scores that track
+risk appetite across different time horizons.
+
+**Three Timeframes:**
+- **Fast (4-8 weeks):** Short-term momentum, reacts quickly to market shifts
+- **Medium (13-26 weeks):** Primary trend indicator, best for tactical allocation
+- **Slow (26-52 weeks):** Long-term trend, filters out noise
+
+**Regime Interpretation:**
+| Score | Regime | Meaning |
+|-------|--------|---------|
+| > 0.5 | Risk-On | Bullish conditions, favor equities |
+| -0.5 to 0.5 | Neutral | Mixed signals, reduce risk or wait |
+| < -0.5 | Risk-Off | Defensive, favor bonds/cash |
+
+**Usage:** The Medium composite is typically used for portfolio allocation decisions.
+Fast signals potential turns, Slow confirms sustained trends.
+            """)
+
         fig = create_composite_timeseries(filtered_composites, filtered_regimes)
         st.plotly_chart(fig, width="stretch")
 
@@ -366,6 +393,28 @@ def main():
 
     with tab2:
         st.subheader("Current Block Scores")
+
+        with st.expander("Understanding Block Scores", expanded=False):
+            st.markdown("""
+**What are Blocks?**
+Blocks are groups of related indicators measuring specific aspects of market risk:
+- **Equity Leadership:** Which sectors/styles are leading (cyclical vs defensive)
+- **Credit:** High yield spreads, investment grade conditions
+- **FX/Global:** Currency risk appetite, international flows
+- **Volatility:** VIX, stress indicators
+
+**Score Interpretation (Z-Scores):**
+| Score | Meaning |
+|-------|---------|
+| > +1.0 | Strong risk-on signal |
+| +0.5 to +1.0 | Moderately bullish |
+| -0.5 to +0.5 | Neutral |
+| -1.0 to -0.5 | Moderately bearish |
+| < -1.0 | Strong risk-off signal |
+
+**Block Heatmap:** Shows how each block has evolved over time.
+Green = risk-on, Red = risk-off. Look for persistent colors (trend) or divergences.
+            """)
 
         if not filtered_blocks.empty:
             fig = create_block_bars(filtered_blocks)
@@ -405,6 +454,31 @@ def main():
 
     with tab3:
         st.subheader("Checklist Score Over Time")
+
+        with st.expander("Understanding the Bull Market Checklist", expanded=False):
+            st.markdown("""
+**What is the Checklist?**
+A simple bull/bear scoring system based on key market ratios and indicators.
+Each item is classified as BULL, BEAR, or NEUTRAL based on its trend.
+
+**Checklist Criteria (similar to Daily Number):**
+- **Breakout Level:** S&P 500 above recent highs
+- **Trend Direction:** 200-day MA rising
+- **Momentum Regime:** RSI in bullish zone
+- **Breadth Thrust:** % of stocks at 20-day highs > 55%
+- **Risk Regime:** Risk-On/Risk-Off indicator
+- **Credit Conditions:** High yield spreads
+- **Global Participation:** International markets participating
+
+**Score Interpretation:**
+| Score | Regime | Action |
+|-------|--------|--------|
+| 75-100% Bull | Confirmed Bull | Full equity allocation |
+| 50-75% Bull | On Watch | Moderate allocation, watch for changes |
+| <50% Bull | Risk-Off | Defensive, raise cash |
+
+**Direction column:** Shows if each indicator is Improving, Declining, or Flat vs prior reading.
+            """)
 
         if not filtered_checklist.empty:
             # Get signal columns
@@ -599,8 +673,34 @@ def main():
 
     with tab6:
         st.subheader("SPY Regime Backtest")
+
+        with st.expander("Understanding the Backtest", expanded=False):
+            st.markdown("""
+**What this shows:**
+A historical simulation of trading SPY based on regime signals.
+
+**Strategy:**
+- **Risk-On (green):** Hold SPY (long equities)
+- **Risk-Off (red):** Go to cash (0% return while waiting)
+
+**Key Metrics:**
+| Metric | What it means | Good value |
+|--------|---------------|------------|
+| **Total Return** | Cumulative gain/loss | Higher = better |
+| **CAGR** | Annualized return | >8% beats bonds |
+| **Max Drawdown** | Worst peak-to-trough loss | <20% is defensive |
+| **Win Rate** | % of trades profitable | >50% for trend systems |
+| **Sharpe Ratio** | Risk-adjusted return | >1.0 is good |
+
+**Comparison:**
+- **Buy & Hold:** Simply holding SPY the entire time
+- **Strategy:** Following regime signals
+
+**Note:** Past performance doesn't guarantee future results. This is for
+educational purposes to understand how the regime model would have performed.
+            """)
+
         st.markdown(
-            "Backtest SPY using regime signals: "
             "**Long during Risk-On (green), cash during Risk-Off (red)**"
         )
 
@@ -671,8 +771,32 @@ def main():
 
     with tab7:
         st.subheader("Factor Leadership")
+
+        with st.expander("Understanding Factor Leadership", expanded=False):
+            st.markdown("""
+**What is Factor Leadership?**
+Factor leadership shows which market characteristics (factors) are currently being
+rewarded by the market. This helps understand the "type" of market we're in.
+
+**Key Factors:**
+| Factor | Risk-On Leader | Risk-Off Leader | Measured By |
+|--------|---------------|-----------------|-------------|
+| **Size** | Small Cap | Large Cap | IWM/SPY ratio |
+| **Style** | Growth | Value | QQQ/SPY ratio |
+| **Risk Appetite** | High Beta | Low Volatility | SPHB/SPLV ratio |
+| **Cyclical** | Discretionary | Staples | XLY/XLP ratio |
+| **Credit** | High Yield | Treasuries | HYG/IEF ratio |
+| **Global** | Emerging Markets | US | EEM/SPY ratio |
+
+**How to Use:**
+- Multiple factors showing Risk-On = confident bull market
+- Mixed signals = rotation or transition
+- Multiple Risk-Off = defensive posture warranted
+
+**Z-Score thresholds:** >0.5 = Risk-On leading, <-0.5 = Risk-Off leading
+            """)
+
         st.markdown(
-            "Current factor preferences based on ratio trends. "
             "**Green** = Risk-On factor leading, **Red** = Defensive factor leading."
         )
 
@@ -787,6 +911,493 @@ def main():
                     st.warning(f"Could not load SPY data: {e}")
         else:
             st.warning("No feature data available for factor analysis.")
+
+    with tab8:
+        st.subheader("Market Breadth Heat Maps")
+
+        # Explanation section
+        with st.expander("What is Market Breadth? (Click to learn)", expanded=False):
+            st.markdown("""
+**Market breadth** measures how many stocks are participating in a market move.
+It helps distinguish between healthy rallies (broad participation) and narrow rallies
+(driven by a few stocks).
+
+**Key Concepts:**
+- **Advancers/Decliners**: Stocks that went up vs down on a given day
+- **% Above Moving Averages**: Shows trend health across the market
+- **New Highs/Lows**: Stocks making fresh price extremes
+- **Overbought/Oversold**: RSI-based momentum readings
+
+**Why it matters:** Strong markets show broad participation. When indices rise but
+breadth narrows (fewer stocks participating), it can signal distribution or a
+topping process. Conversely, improving breadth during a pullback suggests underlying strength.
+            """)
+
+        # Load breadth data with caching
+        try:
+            with st.spinner("Loading breadth data..."):
+                breadth_df = fetch_breadth_data(lookback_days=10, use_cache=True)
+
+            if breadth_df.empty:
+                st.warning("No breadth data available. Run fetch to populate data.")
+                if st.button("Fetch Breadth Data Now"):
+                    with st.spinner("Fetching breadth data (this may take 2-3 minutes)..."):
+                        breadth_df = fetch_breadth_data(lookback_days=10, use_cache=False, force_refresh=True)
+                    st.rerun()
+            else:
+                # Data info
+                latest_date = breadth_df["date"].max()
+                st.caption(f"Data as of: {pd.Timestamp(latest_date).strftime('%Y-%m-%d')}")
+
+                # ------------------------------------------------------------------
+                # 1. Advancers & Decliners Heat Map
+                # ------------------------------------------------------------------
+                st.markdown("### Advancers & Decliners")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Count of stocks that closed higher (Advancers) or lower (Decliners) vs prior day.
+
+**Interpretation:**
+- **Strong day:** Advancers significantly outnumber Decliners (e.g., 400+ vs 100)
+- **Weak day:** Decliners outnumber Advancers
+- **Healthy market:** Consistently more advancers over time
+- **Distribution:** Rising index with increasing decliners = warning sign
+                    """)
+
+                adv_dec_df = prepare_heatmap_data(breadth_df, "advancers")
+                if not adv_dec_df.empty:
+                    numeric_cols = [c for c in adv_dec_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_advancers_decliners(row):
+                        styles = [""] * len(row)
+                        metric = row.get("Metric", "")
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    if metric == "Advancers":
+                                        intensity = min(val / 400, 1.0) * 0.6
+                                        styles[i] = f"background-color: rgba(46, 204, 113, {intensity})"
+                                    elif metric == "Decliners":
+                                        intensity = min(val / 400, 1.0) * 0.6
+                                        styles[i] = f"background-color: rgba(231, 76, 60, {intensity})"
+                        return styles
+
+                    styled_adv = adv_dec_df.style.apply(color_advancers_decliners, axis=1)
+                    st.dataframe(styled_adv, width="stretch", hide_index=True)
+                else:
+                    st.info("No advancers/decliners data available.")
+
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 2. Moving Average Heat Map
+                # ------------------------------------------------------------------
+                st.markdown("### % Above Moving Averages")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Percentage of stocks trading above their 20, 50, 100, and 200-day moving averages.
+
+**Thresholds:**
+| Level | 20-Day | 50-Day | 200-Day | Interpretation |
+|-------|--------|--------|---------|----------------|
+| **Strong** | >70% | >70% | >70% | Healthy uptrend |
+| **Neutral** | 40-70% | 40-70% | 40-70% | Mixed conditions |
+| **Weak** | <40% | <40% | <40% | Bearish, oversold |
+
+**Key insight:** Compare short-term (20-day) to long-term (200-day):
+- 20-day much higher = near-term overbought, pullback likely
+- 20-day much lower = oversold bounce opportunity
+- All aligned high = strong bull market
+                    """)
+
+                ma_df = prepare_heatmap_data(breadth_df, "ma")
+                if not ma_df.empty:
+                    numeric_cols = [c for c in ma_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_ma_pct(row):
+                        styles = [""] * len(row)
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    intensity = (val / 100) * 0.7
+                                    if val >= 50:
+                                        styles[i] = f"background-color: rgba(46, 204, 113, {intensity})"
+                                    else:
+                                        styles[i] = f"background-color: rgba(231, 76, 60, {(1 - val/100) * 0.7})"
+                        return styles
+
+                    styled_ma = ma_df.style.apply(color_ma_pct, axis=1)
+                    st.dataframe(styled_ma, width="stretch", hide_index=True)
+                else:
+                    st.info("No moving average data available.")
+
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 3. Golden Cross (50-Day > 200-Day MA)
+                # ------------------------------------------------------------------
+                st.markdown("### Golden Cross Breadth (50-Day > 200-Day MA)")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Percentage of stocks with their 50-day MA above their 200-day MA (a "Golden Cross").
+
+**Why it matters:** The Golden Cross is a classic bullish signal for individual stocks.
+Measuring it across all index constituents shows overall trend strength.
+
+**Thresholds:**
+- **>70%:** Strong bull market, most stocks in uptrends
+- **50-70%:** Healthy, but some sectors lagging
+- **<50%:** Bearish undertone, fewer stocks in sustainable uptrends
+- **<30%:** Bear market conditions
+
+**Trend:** Rising % = improving breadth, Falling % = deteriorating conditions
+                    """)
+
+                gc_df = prepare_heatmap_data(breadth_df, "golden_cross")
+                if not gc_df.empty:
+                    numeric_cols = [c for c in gc_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_golden_cross(row):
+                        styles = [""] * len(row)
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    if val >= 70:
+                                        styles[i] = "background-color: rgba(46, 204, 113, 0.6)"
+                                    elif val >= 50:
+                                        styles[i] = "background-color: rgba(46, 204, 113, 0.3)"
+                                    elif val >= 30:
+                                        styles[i] = "background-color: rgba(243, 156, 18, 0.4)"
+                                    else:
+                                        styles[i] = "background-color: rgba(231, 76, 60, 0.5)"
+                        return styles
+
+                    styled_gc = gc_df.style.apply(color_golden_cross, axis=1)
+                    st.dataframe(styled_gc, width="stretch", hide_index=True)
+                else:
+                    st.info("Golden Cross data not available. Refresh to compute.")
+
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 4. Trend Count Model
+                # ------------------------------------------------------------------
+                st.markdown("### Trend Count Model (4 Criteria)")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Counts of stocks meeting ALL 4 or NONE of 4 trend criteria:
+
+**The 4 Criteria:**
+1. 50-Day MA slope is rising (MA today > MA 5 days ago)
+2. 200-Day MA slope is rising
+3. Price > 50-Day MA
+4. 50-Day MA > 200-Day MA
+
+**Interpretation:**
+- **4 of 4 (green):** Stocks in strong uptrends. High counts = healthy bull market
+- **0 of 4 (red):** Stocks in strong downtrends. High counts = bear market conditions
+
+**Typical ranges:**
+- Bull market: 150-250 stocks at 4/4, <50 at 0/4
+- Bear market: <50 stocks at 4/4, 150+ at 0/4
+- Transition: Both counts moderate (50-100 each)
+                    """)
+
+                tc_df = prepare_heatmap_data(breadth_df, "trend_count")
+                if not tc_df.empty:
+                    numeric_cols = [c for c in tc_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_trend_count(row):
+                        styles = [""] * len(row)
+                        metric = row.get("Metric", "")
+                        is_bullish = "4 of 4" in metric
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    if is_bullish:
+                                        intensity = min(val / 200, 1.0) * 0.6
+                                        styles[i] = f"background-color: rgba(46, 204, 113, {intensity})"
+                                    else:
+                                        intensity = min(val / 150, 1.0) * 0.6
+                                        styles[i] = f"background-color: rgba(231, 76, 60, {intensity})"
+                        return styles
+
+                    styled_tc = tc_df.style.apply(color_trend_count, axis=1)
+                    st.dataframe(styled_tc, width="stretch", hide_index=True)
+                else:
+                    st.info("Trend count data not available. Refresh to compute.")
+
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 5. New Highs & Lows Heat Map
+                # ------------------------------------------------------------------
+                st.markdown("### New Highs & New Lows")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Percentage of stocks at N-period highs or lows (1, 3, 6, 12 months).
+
+**Interpretation:**
+- **Highs > Lows:** Bullish, more stocks breaking out than breaking down
+- **Lows > Highs:** Bearish, distribution underway
+- **52-week highs >15%:** Strong momentum
+- **52-week lows >15%:** Panic/capitulation (often a contrarian buy signal)
+
+**Divergence signals:**
+- Index at new high but fewer stocks at highs = negative divergence (warning)
+- Index flat but new highs expanding = positive divergence (bullish)
+                    """)
+
+                hl_df = prepare_heatmap_data(breadth_df, "highs_lows")
+                if not hl_df.empty:
+                    numeric_cols = [c for c in hl_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_highs_lows(row):
+                        styles = [""] * len(row)
+                        metric = row.get("Metric", "")
+                        is_high = "Highs" in metric
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    intensity = min(val / 40, 1.0) * 0.7
+                                    if is_high:
+                                        styles[i] = f"background-color: rgba(46, 204, 113, {intensity})"
+                                    else:
+                                        styles[i] = f"background-color: rgba(231, 76, 60, {intensity})"
+                        return styles
+
+                    styled_hl = hl_df.style.apply(color_highs_lows, axis=1)
+                    st.dataframe(styled_hl, width="stretch", hide_index=True, height=500)
+                else:
+                    st.info("No highs/lows data available.")
+
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 6. Overbought/Oversold Heat Map
+                # ------------------------------------------------------------------
+                st.markdown("### Overbought / Oversold (RSI-based)")
+                with st.expander("How to interpret", expanded=False):
+                    st.markdown("""
+**What it shows:** Percentage of stocks with 14-day RSI above 70 (overbought) or below 30 (oversold).
+
+**Interpretation:**
+- **>25% Overbought:** Market running hot, pullback risk elevated
+- **>20% Oversold:** Panic selling, bounce likely
+- **Both low (<10%):** Consolidation, no extreme
+
+**Contrarian signals:**
+- Extreme oversold (>30% of stocks) often marks bottoms
+- Extreme overbought after a rally can persist in strong trends
+- In bear markets, oversold can stay oversold longer
+
+**Note:** Overbought is NOT bearish by itself - strong markets can stay overbought.
+It's more useful as a timing tool for entries after pullbacks.
+                    """)
+
+                ob_df = prepare_heatmap_data(breadth_df, "overbought")
+                if not ob_df.empty:
+                    numeric_cols = [c for c in ob_df.columns if c not in ["Index", "Metric"]]
+
+                    def color_overbought_oversold(row):
+                        styles = [""] * len(row)
+                        metric = row.get("Metric", "")
+                        for i, col in enumerate(row.index):
+                            if col in numeric_cols:
+                                val = row[col]
+                                if pd.notna(val):
+                                    intensity = min(val / 30, 1.0) * 0.7
+                                    if "Overbought" in metric:
+                                        styles[i] = f"background-color: rgba(46, 204, 113, {intensity})"
+                                    else:
+                                        styles[i] = f"background-color: rgba(231, 76, 60, {intensity})"
+                        return styles
+
+                    styled_ob = ob_df.style.apply(color_overbought_oversold, axis=1)
+                    st.dataframe(styled_ob, width="stretch", hide_index=True)
+                else:
+                    st.info("No overbought/oversold data available.")
+
+                # Refresh button
+                st.divider()
+                col1, col2 = st.columns([1, 4])
+                with col1:
+                    if st.button("Refresh Breadth Data"):
+                        with st.spinner("Fetching fresh breadth data (2-3 min)..."):
+                            fetch_breadth_data(lookback_days=10, use_cache=False, force_refresh=True)
+                        st.rerun()
+                with col2:
+                    st.caption("First run or refresh takes 2-3 minutes to download ~1500 stock prices.")
+
+        except Exception as e:
+            st.error(f"Error loading breadth data: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    with tab9:
+        st.subheader("Sector Scorecard")
+
+        with st.expander("Understanding the Scorecard", expanded=False):
+            st.markdown("""
+**What is the Sector Scorecard?**
+A letter-grade ranking of S&P sectors based on three models:
+
+**The 3 Models:**
+1. **Trend Model:** Is the sector in an uptrend? (Price vs MAs, MA slopes)
+2. **Relative Strength:** Is the sector outperforming SPY? (Ratio trend)
+3. **Momentum Model:** Is momentum positive? (Rate of change, RSI)
+
+**Grade Scale:**
+| Grade | Score | Meaning |
+|-------|-------|---------|
+| **A+** | All A's | Elite - strong across all measures |
+| **A** | Mostly A's | Strong - favor for overweight |
+| **B** | Mixed A/B | Neutral-positive - market weight |
+| **C** | Mixed B/C | Neutral-negative - caution |
+| **D** | Mostly D/F | Weak - underweight |
+| **F** | All F's | Avoid - defensive sectors may do this in rallies |
+
+**How to use:**
+- **Overweight:** A+ and A sectors
+- **Market weight:** B sectors
+- **Underweight:** C, D, F sectors
+- Watch for grade changes (improving or deteriorating)
+            """)
+
+        # Sector ETF definitions with their comparison ratio columns
+        # Most sectors are compared to XLU (utilities) as risk-on vs defensive
+        sector_etfs = {
+            "Technology": {"etf": "XLK", "ratio": "XLK_XLU"},
+            "Financials": {"etf": "XLF", "ratio": "XLF_XLU"},
+            "Industrials": {"etf": "XLI", "ratio": "XLI_XLU"},
+            "Consumer Discretionary": {"etf": "XLY", "ratio": "XLY_XLP"},
+            "Consumer Staples": {"etf": "XLP", "ratio": "XLY_XLP", "invert": True},
+            "Energy": {"etf": "XLE", "ratio": "USO_GLD"},
+            "Utilities": {"etf": "XLU", "ratio": "XLU_SPY"},
+            "Materials": {"etf": "XLB", "ratio": "XME_GLD"},
+            "Health Care": {"etf": "XLV", "ratio": "IBB_SPY"},
+            "Real Estate": {"etf": "XLRE", "ratio": "KRE_VNQ"},
+            "Communication Services": {"etf": "XLC", "ratio": "QQQ_SPY"},
+        }
+
+        # Calculate sector scores from features data
+        if not data["features"].empty:
+            latest_features = data["features"].iloc[-1]
+            scorecard_data = []
+
+            for sector_name, info in sector_etfs.items():
+                etf = info["etf"]
+                ratio = info["ratio"]
+                invert = info.get("invert", False)
+
+                # Look for sector-related features (use double underscore)
+                z_col = f"{ratio}__z_52w"
+                roc_col = f"{ratio}__roc_8w"
+
+                z_score = latest_features.get(z_col, 0) if z_col in latest_features.index else 0
+                roc = latest_features.get(roc_col, 0) if roc_col in latest_features.index else 0
+
+                # Invert if needed (e.g., Consumer Staples is inverse of XLY/XLP)
+                if invert:
+                    z_score = -z_score
+                    roc = -roc
+
+                # Convert to grades
+                def score_to_grade(score, thresholds):
+                    if score > thresholds[0]:
+                        return "A"
+                    elif score > thresholds[1]:
+                        return "B"
+                    elif score > thresholds[2]:
+                        return "C"
+                    elif score > thresholds[3]:
+                        return "D"
+                    else:
+                        return "F"
+
+                # Trend model (based on z-score)
+                trend_grade = score_to_grade(z_score, [0.5, 0, -0.3, -0.7])
+
+                # Relative Strength (based on z-score direction)
+                rs_grade = score_to_grade(z_score, [0.7, 0.2, -0.2, -0.5])
+
+                # Momentum (based on rate of change)
+                mom_grade = score_to_grade(roc * 100, [3, 1, -1, -3])
+
+                # Overall grade
+                grade_values = {"A": 4, "B": 3, "C": 2, "D": 1, "F": 0}
+                avg_score = (grade_values[trend_grade] + grade_values[rs_grade] + grade_values[mom_grade]) / 3
+
+                if avg_score >= 3.5:
+                    overall = "A+"
+                elif avg_score >= 3.0:
+                    overall = "A"
+                elif avg_score >= 2.5:
+                    overall = "B"
+                elif avg_score >= 1.5:
+                    overall = "C"
+                elif avg_score >= 0.5:
+                    overall = "D"
+                else:
+                    overall = "F"
+
+                scorecard_data.append({
+                    "Sector": sector_name,
+                    "ETF": etf,
+                    "Trend": trend_grade,
+                    "Rel Strength": rs_grade,
+                    "Momentum": mom_grade,
+                    "Overall": overall,
+                    "Z-Score": round(z_score, 2),
+                    "ROC": round(roc * 100, 1),
+                })
+
+            scorecard_df = pd.DataFrame(scorecard_data)
+
+            # Sort by overall grade
+            grade_order = {"A+": 0, "A": 1, "B": 2, "C": 3, "D": 4, "F": 5}
+            scorecard_df["sort_key"] = scorecard_df["Overall"].map(grade_order)
+            scorecard_df = scorecard_df.sort_values("sort_key").drop("sort_key", axis=1)
+
+            # Color styling function
+            def color_grades(val):
+                if val in ["A+", "A"]:
+                    return "background-color: rgba(46, 204, 113, 0.5); color: black; font-weight: bold"
+                elif val == "B":
+                    return "background-color: rgba(46, 204, 113, 0.2); color: black"
+                elif val == "C":
+                    return "background-color: rgba(243, 156, 18, 0.3); color: black"
+                elif val == "D":
+                    return "background-color: rgba(231, 76, 60, 0.3); color: black"
+                elif val == "F":
+                    return "background-color: rgba(231, 76, 60, 0.5); color: black; font-weight: bold"
+                return ""
+
+            # Apply styling
+            styled_scorecard = scorecard_df.style.map(
+                color_grades,
+                subset=["Trend", "Rel Strength", "Momentum", "Overall"]
+            )
+
+            st.dataframe(styled_scorecard, width="stretch", hide_index=True)
+
+            # Legend
+            st.markdown("""
+**Grade Colors:**
+<span style='background-color: rgba(46, 204, 113, 0.5); padding: 2px 8px;'>A/A+</span>
+<span style='background-color: rgba(46, 204, 113, 0.2); padding: 2px 8px;'>B</span>
+<span style='background-color: rgba(243, 156, 18, 0.3); padding: 2px 8px;'>C</span>
+<span style='background-color: rgba(231, 76, 60, 0.3); padding: 2px 8px;'>D</span>
+<span style='background-color: rgba(231, 76, 60, 0.5); padding: 2px 8px;'>F</span>
+            """, unsafe_allow_html=True)
+
+        else:
+            st.warning("Feature data not available for sector scoring. Run the pipeline first.")
 
     # Footer
     st.sidebar.markdown("---")
