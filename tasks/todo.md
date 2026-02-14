@@ -138,6 +138,73 @@
   - Z-score and trend indicators
   - Integrated multi-panel SPY chart
 
+## Phase 5: Dashboard Quality + Treasury Tab (COMPLETED)
+
+### Dashboard Quality Fixes
+- [x] Issue 1: Checklist Direction Logic
+  - Fixed incomplete elif chain causing neutral->bull to show "Flat"
+  - Now uses signal ordering (bear=0, neutral=1, bull=2) for comparison
+  - File: dashboard.py lines 583-595
+
+- [x] Issue 2: Attribution Tab Waterfall Chart
+  - Added import for create_attribution_chart()
+  - Tab 4 now displays waterfall chart with proper attribution data
+  - Shows contribution table below each chart
+  - File: dashboard.py tab4 section
+
+- [x] Issue 3: Finviz Scraping Robustness
+  - Added try-catch with explicit error messages per field
+  - Returns status dict: {"status": "success/partial/failed", "fields_parsed": N}
+  - Logs warnings when fields can't be parsed
+  - File: breadth_fetch.py fetch_finviz_breadth()
+
+- [x] Issue 4: Sector Grading Thresholds from Config
+  - Created config/dashboard.yml with sector scorecard thresholds
+  - Added load_dashboard_config() function
+  - Sector scorecard now reads thresholds dynamically
+  - File: dashboard.py, config/dashboard.yml
+
+- [x] Issue 5: Block Heatmap Respects Date Range
+  - Changed from hardcoded "52 Weeks" to calculated weeks from filtered_blocks
+  - Title now shows actual number of weeks displayed
+  - File: dashboard.py tab2 section
+
+### Treasury Tax Flow Tab (Tab 10)
+- [x] Created fiscal_data.py provider
+  - FiscalDataProvider class following fred.py pattern
+  - Handles schema change (Feb 14, 2023)
+  - Fetches from fiscaldata.treasury.gov API
+  - File: sources/fiscal_data.py
+
+- [x] Created treasury_fetch.py pipeline
+  - fetch_tax_deposits() with 12-hour cache
+  - calculate_rolling_sums() for noise reduction
+  - calculate_yoy_growth() with business day alignment
+  - calculate_ytd_cumulative() for year-over-year comparison
+  - prepare_treasury_indicators() main entry point
+  - Gig economy, corporate profits, labor market indicators
+  - File: pipeline/treasury_fetch.py
+
+- [x] Added treasury chart functions to charts.py
+  - create_tax_yoy_chart() - YoY growth time series
+  - create_ytd_comparison_chart() - This year vs last year (Deluard style)
+  - create_tax_vs_spy_chart() - Overlay with SPY
+  - create_gig_economy_chart() - Non-withheld taxes as gig economy proxy
+  - File: charts.py
+
+- [x] Added Tab 10 - Treasury Tax Flow
+  - Educational expander explaining Deluard methodology
+  - Control panel: rolling window selector, category multiselect
+  - Chart 1: YoY Growth by Tax Category
+  - Chart 2: YTD Cumulative (This Year vs Last Year)
+  - Chart 3: Gig Economy Indicator
+  - Chart 4: Tax Receipts vs S&P 500
+  - Data freshness indicator
+  - Refresh button
+  - File: dashboard.py tab10 section
+
+- [x] Updated config/sources.yml with fiscal_data source
+
 ## Remaining
 
 - [ ] Email Report

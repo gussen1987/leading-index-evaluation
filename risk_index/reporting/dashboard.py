@@ -39,6 +39,15 @@ from risk_index.reporting.charts import (
     create_composition_pie,
     create_equity_curves,
     create_spy_regime_panel_chart,
+    create_cumulative_ad_chart,
+    create_pct_above_ma_timeseries,
+    create_new_highs_lows_timeseries,
+    create_regime_timeline,
+    create_attribution_chart,
+    create_tax_yoy_chart,
+    create_ytd_comparison_chart,
+    create_tax_vs_spy_chart,
+    create_gig_economy_chart,
     COLORS,
 )
 from risk_index.research.backtest_regimes import (
@@ -47,11 +56,14 @@ from risk_index.research.backtest_regimes import (
     load_spy_prices,
 )
 from risk_index.pipeline.breadth_fetch import (
-    fetch_breadth_data,
     fetch_all_breadth_data,
     fetch_finviz_breadth,
     prepare_heatmap_data,
     prepare_breadth_summary,
+    fetch_breadth_timeseries,
+)
+from risk_index.pipeline.treasury_fetch import (
+    prepare_treasury_indicators,
 )
 
 
@@ -70,27 +82,27 @@ def load_data():
 
     try:
         data["features"] = read_parquet(PROCESSED_DIR / "features_latest.parquet")
-    except FileNotFoundError:
+    except Exception:
         data["features"] = pd.DataFrame()
 
     try:
         data["blocks"] = read_parquet(PROCESSED_DIR / "blocks_latest.parquet")
-    except FileNotFoundError:
+    except Exception:
         data["blocks"] = pd.DataFrame()
 
     try:
         data["composites"] = read_parquet(PROCESSED_DIR / "composites_latest.parquet")
-    except FileNotFoundError:
+    except Exception:
         data["composites"] = pd.DataFrame()
 
     try:
         data["regimes"] = read_parquet(PROCESSED_DIR / "regimes_latest.parquet")
-    except FileNotFoundError:
+    except Exception:
         data["regimes"] = pd.DataFrame()
 
     try:
         data["checklist"] = read_parquet(PROCESSED_DIR / "checklist_latest.parquet")
-    except FileNotFoundError:
+    except Exception:
         data["checklist"] = pd.DataFrame()
 
     return data
@@ -239,6 +251,26 @@ def get_block_details(block_name: str) -> pd.DataFrame:
     return pd.DataFrame()
 
 
+def load_dashboard_config() -> dict:
+    """Load dashboard configuration from YAML.
+
+    Returns:
+        Dict with dashboard settings including sector thresholds
+    """
+    config_path = CONFIG_DIR / "dashboard.yml"
+    if not config_path.exists():
+        # Return defaults if config doesn't exist
+        return {
+            "sector_scorecard": {
+                "trend_thresholds": [0.5, 0, -0.3, -0.7],
+                "relative_strength_thresholds": [0.7, 0.2, -0.2, -0.5],
+                "momentum_thresholds": [3, 1, -1, -3],
+            }
+        }
+
+    return read_yaml(config_path)
+
+
 def get_composite_weights(speed: str) -> pd.DataFrame:
     """Load composite weights from config.
 
@@ -353,8 +385,8 @@ def main():
         st.caption(f"Data as of: {latest_date.strftime('%Y-%m-%d')}")
 
     # Tabs for different views
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9 = st.tabs(
-        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership", "Market Breadth", "Sector Scorecard"]
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(
+        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership", "Market Breadth", "Sector Scorecard", "Treasury Tax Flow"]
     )
 
     with tab1:
@@ -394,6 +426,39 @@ Fast signals potential turns, Slow confirms sustained trends.
             fig = create_regime_distribution(filtered_regimes, COL_REGIME_SLOW, "Slow Regime")
             st.plotly_chart(fig, width="stretch")
 
+        # Regime Timeline Charts
+        st.subheader("Regime Timeline")
+        with st.expander("Understanding Regime Timelines", expanded=False):
+            st.markdown("""
+**Regime Timeline Charts**
+
+These step-function charts show regime changes over time:
+- **+1 (Risk-On):** Bullish conditions, green shading
+- **0 (Neutral):** Mixed signals, no shading
+- **-1 (Risk-Off):** Bearish conditions, red shading
+
+**Interpretation:**
+- Look for sustained periods in one regime (trend persistence)
+- Frequent regime changes = choppy, unclear market
+- Compare Fast vs Slow: Fast leads, Slow confirms
+            """)
+
+        # Display regime timelines for each speed
+        if not filtered_regimes.empty:
+            timeline_tabs = st.tabs(["Fast", "Medium", "Slow"])
+
+            with timeline_tabs[0]:
+                fig_fast = create_regime_timeline(filtered_regimes, COL_REGIME_FAST, "Fast Regime Timeline")
+                st.plotly_chart(fig_fast, use_container_width=True)
+
+            with timeline_tabs[1]:
+                fig_medium = create_regime_timeline(filtered_regimes, COL_REGIME_MEDIUM, "Medium Regime Timeline")
+                st.plotly_chart(fig_medium, use_container_width=True)
+
+            with timeline_tabs[2]:
+                fig_slow = create_regime_timeline(filtered_regimes, COL_REGIME_SLOW, "Slow Regime Timeline")
+                st.plotly_chart(fig_slow, use_container_width=True)
+
     with tab2:
         st.subheader("Current Block Scores")
 
@@ -423,8 +488,10 @@ Green = risk-on, Red = risk-off. Look for persistent colors (trend) or divergenc
             fig = create_block_bars(filtered_blocks)
             st.plotly_chart(fig, width="stretch")
 
-            st.subheader("Block Heatmap (Last 52 Weeks)")
-            fig = create_block_heatmap(filtered_blocks)
+            # Calculate weeks based on filtered data
+            num_weeks = len(filtered_blocks)
+            st.subheader(f"Block Heatmap (Last {num_weeks} Weeks)")
+            fig = create_block_heatmap(filtered_blocks, weeks=num_weeks)
             st.plotly_chart(fig, width="stretch")
 
             # Block drill-down
@@ -543,14 +610,15 @@ Each item is classified as BULL, BEAR, or NEUTRAL based on its trend.
                     signal = latest.get(col, "neutral")
                     prev_signal = prev.get(col, signal)
 
-                    # Direction of change
-                    if signal == prev_signal:
-                        direction = "Flat"
-                        dir_icon = "-"
-                    elif signal == "bull" and prev_signal != "bull":
+                    # Direction of change using signal ordering
+                    SIGNAL_ORDER = {"bear": 0, "neutral": 1, "bull": 2}
+                    current_val = SIGNAL_ORDER.get(signal, 1)
+                    prev_val = SIGNAL_ORDER.get(prev_signal, 1)
+
+                    if current_val > prev_val:
                         direction = "Improving"
                         dir_icon = "+"
-                    elif signal == "bear" and prev_signal != "bear":
+                    elif current_val < prev_val:
                         direction = "Declining"
                         dir_icon = "-"
                     else:
@@ -577,37 +645,100 @@ Each item is classified as BULL, BEAR, or NEUTRAL based on its trend.
     with tab4:
         st.subheader("Regime Attribution")
 
+        with st.expander("Understanding Attribution", expanded=False):
+            st.markdown("""
+**What is Attribution?**
+Attribution analysis breaks down the composite score into contributions from each block.
+This shows which factors are driving the current regime signal.
+
+**Waterfall Chart:**
+- Each bar shows a block's contribution to the total composite score
+- **Green bars:** Positive contributions (risk-on signals)
+- **Red bars:** Negative contributions (risk-off signals)
+- Contributions = Block Score × Weight
+
+**Usage:** Identify which market factors are supporting or opposing the current regime.
+            """)
+
         if not filtered_blocks.empty and not filtered_composites.empty:
             latest_date = filtered_blocks.index[-1]
 
-            for speed, col in [
-                ("Fast", COL_COMPOSITE_FAST),
-                ("Medium", COL_COMPOSITE_MEDIUM),
-                ("Slow", COL_COMPOSITE_SLOW),
-            ]:
-                if col in filtered_composites.columns:
-                    st.markdown(f"**{speed} Composite**")
+            # Create tabs for each speed
+            attr_tabs = st.tabs(["Fast", "Medium", "Slow"])
 
-                    composite_val = filtered_composites.loc[latest_date, col]
-                    st.write(f"Score: {composite_val:.2f}")
+            for tab_idx, (speed, col, speed_key) in enumerate([
+                ("Fast", COL_COMPOSITE_FAST, "fast"),
+                ("Medium", COL_COMPOSITE_MEDIUM, "medium"),
+                ("Slow", COL_COMPOSITE_SLOW, "slow"),
+            ]):
+                with attr_tabs[tab_idx]:
+                    if col in filtered_composites.columns:
+                        composite_val = filtered_composites.loc[latest_date, col]
 
-                    # Show block contributions
-                    block_vals = filtered_blocks.loc[latest_date].dropna().sort_values()
+                        # Get weights for this composite
+                        weights_df = get_composite_weights(speed_key)
 
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write("Top Contributors (Positive)")
-                        positive = block_vals[block_vals > 0].tail(5)
-                        for name, val in positive.items():
-                            st.write(f"  - {name}: +{val:.2f}")
+                        if not weights_df.empty:
+                            # Compute attribution data
+                            attribution = {speed_key: {"blocks": {}}}
+                            total_contribution = 0
 
-                    with col2:
-                        st.write("Top Contributors (Negative)")
-                        negative = block_vals[block_vals < 0].head(5)
-                        for name, val in negative.items():
-                            st.write(f"  - {name}: {val:.2f}")
+                            for _, row in weights_df.iterrows():
+                                block_name = row["block"]
+                                weight = row["weight"]
 
-                    st.divider()
+                                if block_name in filtered_blocks.columns:
+                                    block_score = filtered_blocks.loc[latest_date, block_name]
+                                    if pd.notna(block_score):
+                                        contribution = block_score * weight
+                                        total_contribution += contribution
+                                        attribution[speed_key]["blocks"][block_name] = {
+                                            "score": block_score,
+                                            "weight": weight,
+                                            "contribution": contribution,
+                                        }
+
+                            attribution[speed_key]["total"] = total_contribution
+
+                            # Display composite score
+                            col1, col2 = st.columns([1, 3])
+                            with col1:
+                                st.metric(f"{speed} Composite", f"{composite_val:.2f}")
+
+                            # Create and display waterfall chart
+                            fig = create_attribution_chart(attribution, speed_key, f"{speed} Composite Attribution")
+                            st.plotly_chart(fig, use_container_width=True)
+
+                            # Show contribution table
+                            st.markdown("**Block Contributions**")
+                            contrib_data = []
+                            for block_name, data in attribution[speed_key]["blocks"].items():
+                                contrib_data.append({
+                                    "Block": block_name.replace("_", " ").title(),
+                                    "Score": round(data["score"], 2),
+                                    "Weight": f"{data['weight']*100:.1f}%",
+                                    "Contribution": round(data["contribution"], 3),
+                                })
+
+                            # Sort by absolute contribution
+                            contrib_df = pd.DataFrame(contrib_data)
+                            if not contrib_df.empty:
+                                contrib_df["abs_contrib"] = contrib_df["Contribution"].abs()
+                                contrib_df = contrib_df.sort_values("abs_contrib", ascending=False).drop("abs_contrib", axis=1)
+
+                                def color_contribution(val):
+                                    if val > 0:
+                                        return "background-color: rgba(46, 204, 113, 0.3)"
+                                    elif val < 0:
+                                        return "background-color: rgba(231, 76, 60, 0.3)"
+                                    return ""
+
+                                styled_contrib = contrib_df.style.map(
+                                    color_contribution, subset=["Contribution"]
+                                )
+                                st.dataframe(styled_contrib, use_container_width=True, hide_index=True)
+                        else:
+                            st.warning(f"No weight configuration found for {speed} composite.")
 
     with tab5:
         st.subheader("Composite Composition")
@@ -803,7 +934,7 @@ rewarded by the market. This helps understand the "type" of market we're in.
             "**Green** = Risk-On factor leading, **Red** = Defensive factor leading."
         )
 
-        if not filtered_blocks.empty and not data["features"].empty:
+        if not filtered_blocks.empty and data.get("features") is not None and not data["features"].empty:
             latest_date = filtered_blocks.index[-1]
 
             # Factor definitions with their key ratios
@@ -857,8 +988,8 @@ rewarded by the market. This helps understand the "type" of market we're in.
                     ratio_id = factor_info["ratio"]
 
                     # Look for z-score column
-                    z_col = f"{ratio_id}_z_52w"
-                    roc_col = f"{ratio_id}_roc_8w"
+                    z_col = f"{ratio_id}__z_52w"
+                    roc_col = f"{ratio_id}__roc_8w"
 
                     z_score = latest_features.get(z_col, 0) if z_col in latest_features else 0
                     roc = latest_features.get(roc_col, 0) if roc_col in latest_features else 0
@@ -1290,6 +1421,78 @@ It's more useful as a timing tool for entries after pullbacks.
                 else:
                     st.info("No overbought/oversold data available.")
 
+                st.divider()
+
+                # ------------------------------------------------------------------
+                # 7. 5-Year Breadth Trends (Time-Series Charts)
+                # ------------------------------------------------------------------
+                st.markdown("### 5-Year Breadth Trends")
+                with st.expander("About these charts", expanded=False):
+                    st.markdown("""
+**5-Year Historical Breadth Charts**
+
+These charts show breadth metrics over the past 5 years, providing longer-term context
+for current readings. Look for:
+
+- **A/D Line divergences:** Index making new highs while A/D line fails to confirm
+- **% Above MA trends:** Long-term health of the market
+- **New Highs vs Lows:** Expansion or contraction of leadership
+
+**Note:** Initial calculation may take 2-3 minutes per index. Data is cached for 24 hours.
+                    """)
+
+                # Index selector for time-series
+                ts_index = st.selectbox(
+                    "Select Index for Time-Series Charts",
+                    options=["SP500", "SP400", "SP600"],
+                    index=0,
+                    help="Choose which index to display 5-year breadth history"
+                )
+
+                ts_col1, ts_col2 = st.columns([1, 1])
+                with ts_col1:
+                    if st.button("Load 5-Year Data", key="load_ts_data"):
+                        with st.spinner(f"Computing 5-year breadth for {ts_index} (2-3 min)..."):
+                            ts_data = fetch_breadth_timeseries(
+                                index_name=ts_index,
+                                years=5,
+                                use_cache=False,
+                                force_refresh=True,
+                            )
+                            st.session_state[f"breadth_ts_{ts_index}"] = ts_data
+                        st.rerun()
+
+                # Try to load from session state or cache
+                ts_key = f"breadth_ts_{ts_index}"
+                if ts_key not in st.session_state:
+                    # Try loading from cache (no computation)
+                    ts_cache = fetch_breadth_timeseries(
+                        index_name=ts_index,
+                        years=5,
+                        use_cache=True,
+                        force_refresh=False,
+                    )
+                    if not ts_cache.empty:
+                        st.session_state[ts_key] = ts_cache
+
+                if ts_key in st.session_state and not st.session_state[ts_key].empty:
+                    ts_data = st.session_state[ts_key]
+                    st.caption(f"Showing {len(ts_data)} days of {ts_index} breadth history")
+
+                    # Cumulative A/D Line chart
+                    ad_chart = create_cumulative_ad_chart(ts_data, title=f"{ts_index} Cumulative A/D Line")
+                    st.plotly_chart(ad_chart, use_container_width=True)
+
+                    # % Above MA chart
+                    ma_chart = create_pct_above_ma_timeseries(ts_data, title=f"{ts_index} % Above Moving Averages")
+                    st.plotly_chart(ma_chart, use_container_width=True)
+
+                    # New Highs vs Lows chart
+                    hl_chart = create_new_highs_lows_timeseries(ts_data, title=f"{ts_index} New Highs vs Lows")
+                    st.plotly_chart(hl_chart, use_container_width=True)
+                else:
+                    st.info("Click 'Load 5-Year Data' to compute and display historical breadth charts.")
+
                 # Info
                 st.divider()
                 indices_loaded = breadth_df["index"].unique().tolist()
@@ -1347,9 +1550,29 @@ A letter-grade ranking of S&P sectors based on three models:
         }
 
         # Calculate sector scores from features data
-        if not data["features"].empty:
+        if data.get("features") is not None and not data["features"].empty:
             latest_features = data["features"].iloc[-1]
             scorecard_data = []
+
+            # Load thresholds from config
+            dashboard_config = load_dashboard_config()
+            scorecard_config = dashboard_config.get("sector_scorecard", {})
+            trend_thresholds = scorecard_config.get("trend_thresholds", [0.5, 0, -0.3, -0.7])
+            rs_thresholds = scorecard_config.get("relative_strength_thresholds", [0.7, 0.2, -0.2, -0.5])
+            mom_thresholds = scorecard_config.get("momentum_thresholds", [3, 1, -1, -3])
+
+            # Convert to grades helper
+            def score_to_grade(score, thresholds):
+                if score > thresholds[0]:
+                    return "A"
+                elif score > thresholds[1]:
+                    return "B"
+                elif score > thresholds[2]:
+                    return "C"
+                elif score > thresholds[3]:
+                    return "D"
+                else:
+                    return "F"
 
             for sector_name, info in sector_etfs.items():
                 etf = info["etf"]
@@ -1368,27 +1591,14 @@ A letter-grade ranking of S&P sectors based on three models:
                     z_score = -z_score
                     roc = -roc
 
-                # Convert to grades
-                def score_to_grade(score, thresholds):
-                    if score > thresholds[0]:
-                        return "A"
-                    elif score > thresholds[1]:
-                        return "B"
-                    elif score > thresholds[2]:
-                        return "C"
-                    elif score > thresholds[3]:
-                        return "D"
-                    else:
-                        return "F"
-
                 # Trend model (based on z-score)
-                trend_grade = score_to_grade(z_score, [0.5, 0, -0.3, -0.7])
+                trend_grade = score_to_grade(z_score, trend_thresholds)
 
                 # Relative Strength (based on z-score direction)
-                rs_grade = score_to_grade(z_score, [0.7, 0.2, -0.2, -0.5])
+                rs_grade = score_to_grade(z_score, rs_thresholds)
 
                 # Momentum (based on rate of change)
-                mom_grade = score_to_grade(roc * 100, [3, 1, -1, -3])
+                mom_grade = score_to_grade(roc * 100, mom_thresholds)
 
                 # Overall grade
                 grade_values = {"A": 4, "B": 3, "C": 2, "D": 1, "F": 0}
@@ -1459,6 +1669,212 @@ A letter-grade ranking of S&P sectors based on three models:
 
         else:
             st.warning("Feature data not available for sector scoring. Run the pipeline first.")
+
+    with tab10:
+        st.subheader("Treasury Tax Flow")
+
+        with st.expander("Understanding Treasury Tax Flow (Deluard Methodology)", expanded=False):
+            st.markdown("""
+**What is Treasury Tax Flow Analysis?**
+
+This tab implements Vincent Deluard's methodology for tracking Daily Treasury Statement (DTS)
+tax collection data as real-time economic indicators.
+
+**Why Tax Deposits Matter:**
+- **Hard cash:** Cannot be revised like GDP or employment data
+- **Real-time:** Updated daily by 4 PM ET
+- **Comprehensive:** Covers all taxpayers (not a sample)
+- **Leading:** Often leads official macro data by weeks
+
+**Tax Categories:**
+| Category | Economic Proxy |
+|----------|----------------|
+| **Withheld Income & Employment** | Labor market health, wage growth |
+| **Corporate Income Taxes** | Corporate profit cycle (quarterly spikes) |
+| **Non-Withheld/Self-Employment** | Gig economy, small business activity |
+| **Total Federal Tax Deposits** | Aggregate economic signal |
+
+**Interpretation:**
+- **YoY Growth > 5%:** Strong economic conditions
+- **YoY Growth 0-5%:** Moderate growth
+- **YoY Growth < 0%:** Economic weakness, potential leading indicator of slowdown
+
+**YTD Comparison:**
+Compare cumulative deposits this year vs last year on the same calendar day.
+Gap widening = accelerating growth; Gap narrowing = decelerating growth.
+
+**Data Source:** U.S. Treasury Fiscal Data API (free, no key required)
+            """)
+
+        # Load treasury data (5 years for cumulative chart)
+        try:
+            with st.spinner("Loading treasury data..."):
+                treasury_data = prepare_treasury_indicators(years=5, use_cache=True)
+
+            if treasury_data["status"] == "failed":
+                st.error("Failed to load treasury data. Check network connection or try again later.")
+            else:
+                # Data freshness indicator
+                latest_date = treasury_data.get("latest_date")
+                if latest_date:
+                    days_old = (pd.Timestamp.now() - latest_date).days
+                    if days_old <= 1:
+                        freshness_color = "green"
+                        freshness_label = "Current"
+                    elif days_old <= 3:
+                        freshness_color = "orange"
+                        freshness_label = "Recent"
+                    else:
+                        freshness_color = "red"
+                        freshness_label = "Stale"
+
+                    st.markdown(
+                        f"**Data as of:** {latest_date.strftime('%Y-%m-%d')} "
+                        f"<span style='color:{freshness_color}'>({freshness_label})</span>",
+                        unsafe_allow_html=True
+                    )
+
+                # Control panel
+                st.markdown("### Controls")
+                col1, col2 = st.columns(2)
+                with col1:
+                    rolling_window = st.selectbox(
+                        "Smoothing Window",
+                        options=[7, 28, 63],
+                        index=1,
+                        format_func=lambda x: {7: "1 Week", 28: "1 Month", 63: "1 Quarter"}[x],
+                        help="Rolling window for smoothing daily noise"
+                    )
+                with col2:
+                    selected_categories = st.multiselect(
+                        "Tax Categories",
+                        options=["withheld_yoy", "corporate_yoy", "non_withheld_yoy", "total_yoy"],
+                        default=["withheld_yoy", "total_yoy"],
+                        format_func=lambda x: {
+                            "withheld_yoy": "Withheld Income",
+                            "corporate_yoy": "Corporate",
+                            "non_withheld_yoy": "Non-Withheld (Gig)",
+                            "total_yoy": "Total"
+                        }[x],
+                    )
+
+                st.divider()
+
+                # Chart 1: YoY Growth by Category
+                st.markdown("### Year-over-Year Growth by Tax Category")
+                st.caption(
+                    "**YoY growth** compares tax deposits to the same period last year. "
+                    "Positive growth indicates economic expansion; negative growth suggests contraction. "
+                    "Corporate taxes show quarterly spikes due to estimated payment deadlines."
+                )
+                yoy_df = treasury_data.get("yoy", pd.DataFrame())
+                if not yoy_df.empty:
+                    fig_yoy = create_tax_yoy_chart(
+                        yoy_df,
+                        categories=selected_categories if selected_categories else None,
+                        title="Tax Deposit YoY Growth"
+                    )
+                    st.plotly_chart(fig_yoy, use_container_width=True)
+                else:
+                    st.info("YoY data not available. Refresh to compute.")
+
+                st.divider()
+
+                # Chart 2: YTD Cumulative Comparison
+                st.markdown("### YTD Cumulative: This Year vs Last Year")
+                st.caption(
+                    "**YTD cumulative** tracks total tax deposits from January 1st to today, "
+                    "compared to the same period last year. A widening gap above last year "
+                    "indicates accelerating economic growth; a narrowing gap suggests deceleration."
+                )
+                ytd_comp_df = treasury_data.get("ytd_comparison", pd.DataFrame())
+
+                ytd_category = st.selectbox(
+                    "Select Category for YTD Comparison",
+                    options=["withheld", "corporate", "non_withheld", "total"],
+                    index=0,
+                    format_func=lambda x: {
+                        "withheld": "Withheld Income & Employment",
+                        "corporate": "Corporate Income Taxes",
+                        "non_withheld": "Non-Withheld (Gig Economy)",
+                        "total": "Total Federal Deposits"
+                    }[x],
+                )
+
+                if not ytd_comp_df.empty:
+                    fig_ytd = create_ytd_comparison_chart(ytd_comp_df, category=ytd_category)
+                    st.plotly_chart(fig_ytd, use_container_width=True)
+                else:
+                    st.info("YTD comparison data not available.")
+
+                st.divider()
+
+                # Chart 3: Gig Economy Indicator
+                st.markdown("### Gig Economy Indicator")
+                st.caption("Non-withheld taxes serve as a proxy for gig economy and self-employment activity.")
+                raw_df = treasury_data.get("raw", pd.DataFrame())
+                if not raw_df.empty:
+                    fig_gig = create_gig_economy_chart(raw_df, rolling_window=rolling_window)
+                    st.plotly_chart(fig_gig, use_container_width=True)
+                else:
+                    st.info("Gig economy data not available.")
+
+                st.divider()
+
+                # Chart 4: Tax Receipts vs SPY
+                st.markdown("### Tax Receipts vs S&P 500")
+                st.caption(
+                    "**Leading indicator:** Changes in tax deposit growth often precede "
+                    "equity market moves. Divergences between tax receipts and SPY can signal "
+                    "upcoming market turning points."
+                )
+
+                try:
+                    spy_prices = load_spy_prices(align_to_weekly=False)
+                    if not spy_prices.empty and not raw_df.empty:
+                        fig_spy = create_tax_vs_spy_chart(
+                            raw_df,
+                            spy_prices,
+                            category="total",
+                            rolling_window=rolling_window,
+                        )
+                        st.plotly_chart(fig_spy, use_container_width=True)
+                    else:
+                        st.info("SPY price data not available for overlay.")
+                except Exception as e:
+                    st.warning(f"Could not load SPY data: {e}")
+
+                st.divider()
+
+                # Chart 5: 5-Year Cumulative
+                st.markdown("### 5-Year Cumulative Tax Deposits")
+                st.caption(
+                    "**Long-term trend:** Cumulative tax deposits since the start of the data series. "
+                    "The slope indicates collection velocity - steeper slopes mean faster economic activity. "
+                    "Flattening or declining slopes can signal economic slowdowns."
+                )
+                if not raw_df.empty:
+                    from risk_index.reporting.charts import create_cumulative_tax_chart
+                    fig_cumulative = create_cumulative_tax_chart(
+                        raw_df,
+                        categories=["withheld", "corporate", "non_withheld", "total"],
+                        title="Cumulative Federal Tax Deposits"
+                    )
+                    st.plotly_chart(fig_cumulative, use_container_width=True)
+                else:
+                    st.info("Cumulative data not available.")
+
+                # Refresh button
+                st.divider()
+                if st.button("Refresh Treasury Data"):
+                    with st.spinner("Fetching fresh treasury data (may take 30-60 seconds)..."):
+                        treasury_data = prepare_treasury_indicators(years=5, use_cache=False)
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Error loading treasury data: {e}")
+            import traceback
+            st.code(traceback.format_exc())
 
     # Footer
     st.sidebar.markdown("---")

@@ -5,7 +5,6 @@ from __future__ import annotations
 from pathlib import Path
 
 import pandas as pd
-import numpy as np
 import plotly.graph_objects as go
 import plotly.express as px
 from plotly.subplots import make_subplots
@@ -15,9 +14,7 @@ from risk_index.core.constants import (
     COL_COMPOSITE_FAST,
     COL_COMPOSITE_MEDIUM,
     COL_COMPOSITE_SLOW,
-    COL_REGIME_FAST,
     COL_REGIME_MEDIUM,
-    COL_REGIME_SLOW,
     COL_CHECKLIST_SCORE,
     ARTIFACTS_DIR,
 )
@@ -312,7 +309,7 @@ def create_regime_distribution(
         go.Pie(
             labels=counts.index,
             values=counts.values,
-            marker_colors=[colors_map.get(l, "gray") for l in counts.index],
+            marker_colors=[colors_map.get(label, "gray") for label in counts.index],
             hole=0.4,
             textinfo="percent+label",
         )
@@ -634,13 +631,6 @@ def create_spy_regime_panel_chart(
     if composite_col in composite_scores.columns:
         score = composite_scores[composite_col].dropna()
         if not score.empty:
-            # Color based on value
-            colors = [
-                COLORS["risk_on"] if v > 0.5 else
-                COLORS["risk_off"] if v < -0.5 else
-                COLORS["neutral"]
-                for v in score.values
-            ]
             fig.add_trace(
                 go.Scatter(
                     x=score.index,
@@ -719,6 +709,676 @@ def _add_regime_shading_to_subplot(
             layer="below",
             row=row, col=1,
         )
+
+
+def create_cumulative_ad_chart(
+    breadth_df: pd.DataFrame,
+    title: str = "Cumulative Advance/Decline Line",
+) -> go.Figure:
+    """Create cumulative A/D line chart.
+
+    The A/D line shows breadth participation over time. Rising A/D indicates
+    broad market strength; divergence from price can signal trend weakness.
+
+    Args:
+        breadth_df: DataFrame with 'cumulative_ad' column, indexed by date
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if breadth_df.empty or "cumulative_ad" not in breadth_df.columns:
+        fig.add_annotation(
+            text="No A/D data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    ad_data = breadth_df["cumulative_ad"].dropna()
+
+    fig.add_trace(
+        go.Scatter(
+            x=ad_data.index,
+            y=ad_data.values,
+            mode="lines",
+            name="Cumulative A/D",
+            line=dict(color=COLORS["medium"], width=2),
+            fill="tozeroy",
+            fillcolor="rgba(155, 89, 182, 0.15)",
+        )
+    )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Cumulative A/D",
+        height=400,
+        hovermode="x unified",
+    )
+
+    return fig
+
+
+def create_pct_above_ma_timeseries(
+    breadth_df: pd.DataFrame,
+    title: str = "% of Stocks Above Moving Averages",
+) -> go.Figure:
+    """Create time-series chart of % stocks above 50/200 DMA.
+
+    This shows market breadth participation over time. Values above 70%
+    indicate bullish breadth; below 40% indicates bearish conditions.
+
+    Args:
+        breadth_df: DataFrame with 'pct_above_50ma' and 'pct_above_200ma' columns
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if breadth_df.empty:
+        fig.add_annotation(
+            text="No breadth data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    # Add 50 DMA line
+    if "pct_above_50ma" in breadth_df.columns:
+        data_50 = breadth_df["pct_above_50ma"].dropna()
+        fig.add_trace(
+            go.Scatter(
+                x=data_50.index,
+                y=data_50.values,
+                mode="lines",
+                name="% Above 50 DMA",
+                line=dict(color=COLORS["fast"], width=2),
+            )
+        )
+
+    # Add 200 DMA line
+    if "pct_above_200ma" in breadth_df.columns:
+        data_200 = breadth_df["pct_above_200ma"].dropna()
+        fig.add_trace(
+            go.Scatter(
+                x=data_200.index,
+                y=data_200.values,
+                mode="lines",
+                name="% Above 200 DMA",
+                line=dict(color=COLORS["slow"], width=2),
+            )
+        )
+
+    # Add threshold lines
+    fig.add_hline(y=70, line_dash="dash", line_color="green", opacity=0.5,
+                  annotation_text="Bullish (70%)")
+    fig.add_hline(y=40, line_dash="dash", line_color="red", opacity=0.5,
+                  annotation_text="Bearish (40%)")
+    fig.add_hline(y=50, line_dash="dot", line_color="gray", opacity=0.3)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="% of Stocks",
+        yaxis=dict(range=[0, 100]),
+        height=400,
+        hovermode="x unified",
+        legend=dict(yanchor="bottom", y=0.01, xanchor="left", x=0.01),
+    )
+
+    return fig
+
+
+def create_new_highs_lows_timeseries(
+    breadth_df: pd.DataFrame,
+    title: str = "% at 52-Week Highs vs Lows",
+) -> go.Figure:
+    """Create time-series chart of new highs vs new lows.
+
+    Shows the percentage of stocks at 52-week highs vs lows over time.
+    More highs = bullish breadth; more lows = bearish breadth.
+
+    Args:
+        breadth_df: DataFrame with 'pct_52wk_highs' and 'pct_52wk_lows' columns
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if breadth_df.empty:
+        fig.add_annotation(
+            text="No highs/lows data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    # Add highs line
+    if "pct_52wk_highs" in breadth_df.columns:
+        data_highs = breadth_df["pct_52wk_highs"].dropna()
+        fig.add_trace(
+            go.Scatter(
+                x=data_highs.index,
+                y=data_highs.values,
+                mode="lines",
+                name="% at 52-Week Highs",
+                line=dict(color=COLORS["risk_on"], width=2),
+                fill="tozeroy",
+                fillcolor="rgba(46, 204, 113, 0.15)",
+            )
+        )
+
+    # Add lows line (inverted as negative for visual effect)
+    if "pct_52wk_lows" in breadth_df.columns:
+        data_lows = breadth_df["pct_52wk_lows"].dropna()
+        fig.add_trace(
+            go.Scatter(
+                x=data_lows.index,
+                y=-data_lows.values,  # Negative to show below zero
+                mode="lines",
+                name="% at 52-Week Lows",
+                line=dict(color=COLORS["risk_off"], width=2),
+                fill="tozeroy",
+                fillcolor="rgba(231, 76, 60, 0.15)",
+            )
+        )
+
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="% of Stocks (Lows shown as negative)",
+        height=400,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    return fig
+
+
+def create_regime_timeline(
+    regimes_df: pd.DataFrame,
+    regime_col: str = COL_REGIME_MEDIUM,
+    title: str = "Regime Timeline",
+) -> go.Figure:
+    """Create step function timeline of regime changes.
+
+    Shows regime as step function: Risk-On (+1), Neutral (0), Risk-Off (-1)
+    with background shading for regime periods.
+
+    Args:
+        regimes_df: DataFrame with regime column
+        regime_col: Which regime column to use
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if regimes_df.empty or regime_col not in regimes_df.columns:
+        fig.add_annotation(
+            text="No regime data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=300)
+        return fig
+
+    regime_series = regimes_df[regime_col].dropna()
+
+    # Map regimes to numeric values
+    regime_map = {
+        Regime.RISK_ON.value: 1,
+        Regime.NEUTRAL.value: 0,
+        Regime.RISK_OFF.value: -1,
+    }
+
+    numeric_regimes = regime_series.map(regime_map)
+
+    # Create step line
+    fig.add_trace(
+        go.Scatter(
+            x=numeric_regimes.index,
+            y=numeric_regimes.values,
+            mode="lines",
+            name="Regime",
+            line=dict(color="black", width=2, shape="hv"),  # Step function
+        )
+    )
+
+    # Add regime shading
+    add_regime_shading(fig, regime_series)
+
+    # Add reference lines
+    fig.add_hline(y=1, line_dash="dot", line_color="green", opacity=0.3)
+    fig.add_hline(y=0, line_dash="dot", line_color="orange", opacity=0.3)
+    fig.add_hline(y=-1, line_dash="dot", line_color="red", opacity=0.3)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Regime",
+        yaxis=dict(
+            tickmode="array",
+            tickvals=[-1, 0, 1],
+            ticktext=["Risk-Off", "Neutral", "Risk-On"],
+            range=[-1.5, 1.5],
+        ),
+        height=300,
+        hovermode="x unified",
+        showlegend=False,
+    )
+
+    return fig
+
+
+def create_tax_yoy_chart(
+    yoy_df: pd.DataFrame,
+    categories: list[str] | None = None,
+    title: str = "Tax Deposit YoY Growth by Category",
+) -> go.Figure:
+    """Create time series chart of YoY tax deposit growth.
+
+    Shows year-over-year growth rates for tax deposit categories,
+    which can serve as leading indicators for economic activity.
+
+    Args:
+        yoy_df: DataFrame with YoY growth columns (e.g., "withheld_yoy")
+        categories: List of categories to show (default: all)
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if yoy_df.empty:
+        fig.add_annotation(
+            text="No YoY data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    # Category display names and colors
+    category_config = {
+        "withheld_yoy": ("Withheld Income & Employment", COLORS["fast"]),
+        "corporate_yoy": ("Corporate Income Taxes", COLORS["medium"]),
+        "non_withheld_yoy": ("Non-Withheld/Self-Employment", COLORS["slow"]),
+        "total_yoy": ("Total Federal Tax Deposits", "black"),
+    }
+
+    if categories is None:
+        categories = ["withheld_yoy", "corporate_yoy", "non_withheld_yoy", "total_yoy"]
+
+    for cat in categories:
+        if cat in yoy_df.columns:
+            display_name, color = category_config.get(cat, (cat, "gray"))
+            data = yoy_df[cat].dropna()
+
+            fig.add_trace(
+                go.Scatter(
+                    x=data.index,
+                    y=data.values,
+                    mode="lines",
+                    name=display_name,
+                    line=dict(color=color, width=2),
+                )
+            )
+
+    # Add zero line
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="YoY Growth (%)",
+        height=450,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    return fig
+
+
+def create_ytd_comparison_chart(
+    ytd_df: pd.DataFrame,
+    category: str = "withheld",
+    title: str | None = None,
+) -> go.Figure:
+    """Create YTD cumulative comparison chart (this year vs last year).
+
+    Deluard's signature chart showing current year vs prior year
+    cumulative tax deposits, aligned by calendar day.
+
+    Args:
+        ytd_df: DataFrame with current_ytd and prior_ytd columns
+        category: Tax category to display
+        title: Chart title (auto-generated if None)
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    current_col = f"{category}_current_ytd"
+    prior_col = f"{category}_prior_ytd"
+
+    if ytd_df.empty or current_col not in ytd_df.columns:
+        fig.add_annotation(
+            text=f"No YTD data available for {category}",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title or f"{category.title()} YTD Comparison", height=400)
+        return fig
+
+    category_names = {
+        "withheld": "Withheld Income & Employment Taxes",
+        "corporate": "Corporate Income Taxes",
+        "non_withheld": "Non-Withheld Taxes (Gig Economy)",
+        "total": "Total Federal Tax Deposits",
+    }
+
+    display_name = category_names.get(category, category.title())
+    if title is None:
+        title = f"{display_name}: This Year vs Last Year"
+
+    # Current year
+    current_data = ytd_df[current_col].dropna()
+    fig.add_trace(
+        go.Scatter(
+            x=current_data.index,
+            y=current_data.values / 1e9,  # Convert to billions
+            mode="lines",
+            name="This Year",
+            line=dict(color=COLORS["risk_on"], width=3),
+            fill="tozeroy",
+            fillcolor="rgba(46, 204, 113, 0.15)",
+        )
+    )
+
+    # Prior year
+    if prior_col in ytd_df.columns:
+        prior_data = ytd_df[prior_col].dropna()
+        fig.add_trace(
+            go.Scatter(
+                x=prior_data.index,
+                y=prior_data.values / 1e9,
+                mode="lines",
+                name="Last Year",
+                line=dict(color="gray", width=2, dash="dash"),
+            )
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Day of Year",
+        yaxis_title="Cumulative Deposits ($B)",
+        height=450,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
+    )
+
+    return fig
+
+
+def create_tax_vs_spy_chart(
+    tax_df: pd.DataFrame,
+    spy_prices: pd.Series,
+    category: str = "total",
+    rolling_window: int = 28,
+    title: str = "Tax Receipts vs S&P 500",
+) -> go.Figure:
+    """Create overlay chart of tax receipts and SPY price.
+
+    Shows tax deposit YoY growth as a potential leading indicator
+    for equity market performance.
+
+    Args:
+        tax_df: DataFrame with tax category columns
+        spy_prices: SPY price series
+        category: Tax category to overlay
+        rolling_window: Rolling window for smoothing
+        title: Chart title
+
+    Returns:
+        Plotly figure with dual y-axes
+    """
+    fig = make_subplots(specs=[[{"secondary_y": True}]])
+
+    if tax_df.empty or spy_prices.empty:
+        fig.add_annotation(
+            text="Insufficient data for comparison",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=450)
+        return fig
+
+    # Calculate tax YoY growth
+    if category in tax_df.columns:
+        rolling = tax_df[category].rolling(window=rolling_window, min_periods=rolling_window // 2).sum()
+        prior = rolling.shift(252)
+        tax_yoy = ((rolling - prior) / prior.abs().replace(0, pd.NA)) * 100
+
+        fig.add_trace(
+            go.Scatter(
+                x=tax_yoy.index,
+                y=tax_yoy.values,
+                mode="lines",
+                name=f"{category.title()} Tax YoY (%)",
+                line=dict(color=COLORS["medium"], width=2),
+            ),
+            secondary_y=True,
+        )
+
+    # Add SPY price
+    fig.add_trace(
+        go.Scatter(
+            x=spy_prices.index,
+            y=spy_prices.values,
+            mode="lines",
+            name="SPY",
+            line=dict(color="black", width=1.5),
+        ),
+        secondary_y=False,
+    )
+
+    # Add zero line for YoY
+    fig.add_hline(y=0, line_dash="dot", line_color="gray", secondary_y=True)
+
+    fig.update_layout(
+        title=title,
+        height=500,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+    fig.update_xaxes(title_text="Date")
+    fig.update_yaxes(title_text="SPY Price ($)", secondary_y=False)
+    fig.update_yaxes(title_text="Tax YoY Growth (%)", secondary_y=True)
+
+    return fig
+
+
+def create_gig_economy_chart(
+    tax_df: pd.DataFrame,
+    rolling_window: int = 28,
+    title: str = "Gig Economy Indicator (Non-Withheld Taxes)",
+) -> go.Figure:
+    """Create gig economy indicator chart.
+
+    Non-withheld tax deposits (self-employment taxes) serve as a
+    real-time proxy for gig economy and small business activity.
+
+    Args:
+        tax_df: DataFrame with "non_withheld" column
+        rolling_window: Smoothing window in days
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if tax_df.empty or "non_withheld" not in tax_df.columns:
+        fig.add_annotation(
+            text="No gig economy data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(title=title, height=400)
+        return fig
+
+    # Calculate rolling sum and YoY growth
+    rolling = tax_df["non_withheld"].rolling(window=rolling_window, min_periods=rolling_window // 2).sum()
+    prior = rolling.shift(252)
+    yoy = ((rolling - prior) / prior.abs().replace(0, pd.NA)) * 100
+
+    yoy = yoy.dropna()
+
+    # Color segments by positive/negative
+    fig.add_trace(
+        go.Scatter(
+            x=yoy.index,
+            y=yoy.values,
+            mode="lines",
+            name="Gig Economy YoY",
+            line=dict(color=COLORS["slow"], width=2),
+            fill="tozeroy",
+            fillcolor="rgba(26, 188, 156, 0.2)",
+        )
+    )
+
+    # Add zero line and threshold lines
+    fig.add_hline(y=0, line_dash="solid", line_color="gray")
+    fig.add_hline(y=10, line_dash="dash", line_color="green", opacity=0.5,
+                  annotation_text="Strong Growth")
+    fig.add_hline(y=-10, line_dash="dash", line_color="red", opacity=0.5,
+                  annotation_text="Contraction")
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="YoY Growth (%)",
+        height=400,
+        hovermode="x unified",
+    )
+
+    return fig
+
+
+def create_cumulative_tax_chart(
+    df: pd.DataFrame,
+    categories: list[str] | None = None,
+    title: str = "Cumulative Federal Tax Deposits (5-Year)",
+) -> go.Figure:
+    """Create cumulative tax deposits chart showing long-term trends.
+
+    Args:
+        df: DataFrame with tax category columns (raw daily data)
+        categories: List of categories to include (default: all)
+        title: Chart title
+
+    Returns:
+        Plotly figure
+    """
+    if df.empty:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+    if categories is None:
+        categories = ["withheld", "corporate", "non_withheld", "total"]
+
+    # Filter to available columns
+    available_cats = [c for c in categories if c in df.columns]
+
+    if not available_cats:
+        fig = go.Figure()
+        fig.add_annotation(
+            text="No matching categories found",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False
+        )
+        return fig
+
+    # Calculate cumulative sum from start of data
+    df_sorted = df.sort_index()
+    cumulative = df_sorted[available_cats].cumsum()
+
+    # Scale to billions for readability
+    cumulative = cumulative / 1e3  # Convert to billions (values are in millions)
+
+    colors = {
+        "withheld": "#3498db",       # Blue
+        "corporate": "#e74c3c",      # Red
+        "non_withheld": "#2ecc71",   # Green
+        "total": "#9b59b6",          # Purple
+    }
+
+    labels = {
+        "withheld": "Withheld Income & Employment",
+        "corporate": "Corporate Income",
+        "non_withheld": "Non-Withheld (Gig/Self-Emp)",
+        "total": "Total Federal Deposits",
+    }
+
+    fig = go.Figure()
+
+    for cat in available_cats:
+        fig.add_trace(
+            go.Scatter(
+                x=cumulative.index,
+                y=cumulative[cat].values,
+                name=labels.get(cat, cat),
+                mode="lines",
+                line=dict(color=colors.get(cat, "#95a5a6"), width=2),
+                hovertemplate=f"{labels.get(cat, cat)}: $%{{y:,.1f}}B<extra></extra>",
+            )
+        )
+
+    fig.update_layout(
+        title=title,
+        xaxis_title="Date",
+        yaxis_title="Cumulative Deposits ($B)",
+        height=450,
+        hovermode="x unified",
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=1.02,
+            xanchor="right",
+            x=1
+        ),
+    )
+
+    return fig
 
 
 def save_all_charts(

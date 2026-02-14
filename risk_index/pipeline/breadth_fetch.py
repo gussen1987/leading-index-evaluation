@@ -14,7 +14,6 @@ from __future__ import annotations
 import re
 import time
 from datetime import datetime
-from pathlib import Path
 from typing import Literal
 
 from io import StringIO
@@ -55,6 +54,150 @@ HEADERS = {
     "Accept": "application/json, text/html",
 }
 
+# Constituent change history tracking (forward-only)
+CONSTITUENT_HISTORY_FILE = CONSTITUENTS_DIR / "change_history.json"
+
+
+def load_constituent_history() -> dict:
+    """Load constituent change history from JSON file.
+
+    Returns:
+        Dict with structure:
+        {
+            "index_name": [
+                {
+                    "date": "2024-01-15",
+                    "added": ["TICKER1", "TICKER2"],
+                    "removed": ["TICKER3"],
+                    "source": "wikipedia"
+                },
+                ...
+            ]
+        }
+    """
+    if not CONSTITUENT_HISTORY_FILE.exists():
+        return {}
+
+    try:
+        import json
+        with open(CONSTITUENT_HISTORY_FILE, "r") as f:
+            return json.load(f)
+    except Exception as e:
+        logger.warning(f"Could not load constituent history: {e}")
+        return {}
+
+
+def save_constituent_history(history: dict) -> None:
+    """Save constituent change history to JSON file.
+
+    Args:
+        history: Dict of index changes
+    """
+    import json
+
+    ensure_dirs()
+
+    try:
+        with open(CONSTITUENT_HISTORY_FILE, "w") as f:
+            json.dump(history, f, indent=2)
+        logger.info(f"Saved constituent history to {CONSTITUENT_HISTORY_FILE}")
+    except Exception as e:
+        logger.error(f"Could not save constituent history: {e}")
+
+
+def track_constituent_changes(
+    index_name: str,
+    current_tickers: list[str],
+    previous_tickers: list[str] | None = None,
+) -> dict | None:
+    """Track changes in index constituents.
+
+    Compares current constituents to previous and logs any additions/removals.
+    This is forward-only tracking - no retroactive historical adjustment.
+
+    Args:
+        index_name: Name of the index (e.g., "SP500")
+        current_tickers: Current list of tickers
+        previous_tickers: Previous list of tickers (if None, loads from cache)
+
+    Returns:
+        Dict with change info if changes detected, None otherwise
+    """
+    if previous_tickers is None:
+        # Try to load previous from cache
+        cache_file = CONSTITUENTS_DIR / f"{index_name.lower()}_constituents.csv"
+        if cache_file.exists():
+            try:
+                df = pd.read_csv(cache_file)
+                previous_tickers = df["Symbol"].tolist()
+            except Exception:
+                previous_tickers = []
+        else:
+            previous_tickers = []
+
+    if not previous_tickers:
+        # No previous data, nothing to compare
+        return None
+
+    current_set = set(current_tickers)
+    previous_set = set(previous_tickers)
+
+    added = list(current_set - previous_set)
+    removed = list(previous_set - current_set)
+
+    if not added and not removed:
+        return None
+
+    change_record = {
+        "date": datetime.now().strftime("%Y-%m-%d"),
+        "added": sorted(added),
+        "removed": sorted(removed),
+        "added_count": len(added),
+        "removed_count": len(removed),
+    }
+
+    # Log the change
+    if added:
+        logger.info(f"{index_name}: Added {len(added)} constituents: {', '.join(added[:5])}{'...' if len(added) > 5 else ''}")
+    if removed:
+        logger.info(f"{index_name}: Removed {len(removed)} constituents: {', '.join(removed[:5])}{'...' if len(removed) > 5 else ''}")
+
+    # Save to history
+    history = load_constituent_history()
+    if index_name not in history:
+        history[index_name] = []
+
+    history[index_name].append(change_record)
+    save_constituent_history(history)
+
+    return change_record
+
+
+def get_constituent_change_summary() -> pd.DataFrame:
+    """Get a summary of all constituent changes.
+
+    Returns:
+        DataFrame with columns: index, date, added, removed, added_count, removed_count
+    """
+    history = load_constituent_history()
+
+    if not history:
+        return pd.DataFrame()
+
+    rows = []
+    for index_name, changes in history.items():
+        for change in changes:
+            rows.append({
+                "index": index_name,
+                "date": change.get("date"),
+                "added": ", ".join(change.get("added", [])[:3]) + ("..." if len(change.get("added", [])) > 3 else ""),
+                "removed": ", ".join(change.get("removed", [])[:3]) + ("..." if len(change.get("removed", [])) > 3 else ""),
+                "added_count": change.get("added_count", len(change.get("added", []))),
+                "removed_count": change.get("removed_count", len(change.get("removed", []))),
+            })
+
+    return pd.DataFrame(rows)
+
 
 def fetch_wikipedia_table(url: str) -> list[pd.DataFrame]:
     """Fetch HTML tables from Wikipedia with proper headers.
@@ -76,11 +219,12 @@ def ensure_dirs() -> None:
     PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
 
-def get_sp500_constituents(use_cache: bool = True) -> list[str]:
+def get_sp500_constituents(use_cache: bool = True, track_changes: bool = True) -> list[str]:
     """Fetch S&P 500 tickers from Wikipedia or cache.
 
     Args:
         use_cache: Whether to use cached CSV if available
+        track_changes: Whether to track constituent changes (forward-only)
 
     Returns:
         List of ticker symbols
@@ -92,11 +236,24 @@ def get_sp500_constituents(use_cache: bool = True) -> list[str]:
         df = pd.read_csv(cache_file)
         return df["Symbol"].tolist()
 
+    # Load previous tickers for change tracking
+    previous_tickers = None
+    if track_changes and cache_file.exists():
+        try:
+            df = pd.read_csv(cache_file)
+            previous_tickers = df["Symbol"].tolist()
+        except Exception:
+            pass
+
     try:
         tables = fetch_wikipedia_table(SP500_URL)
         df = tables[0]
         # Clean ticker symbols (replace . with - for Yahoo Finance)
         tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
+
+        # Track changes before caching (forward-only)
+        if track_changes and previous_tickers:
+            track_constituent_changes("SP500", tickers, previous_tickers)
 
         # Cache the result
         pd.DataFrame({"Symbol": tickers}).to_csv(cache_file, index=False)
@@ -110,11 +267,12 @@ def get_sp500_constituents(use_cache: bool = True) -> list[str]:
         return []
 
 
-def get_sp400_constituents(use_cache: bool = True) -> list[str]:
+def get_sp400_constituents(use_cache: bool = True, track_changes: bool = True) -> list[str]:
     """Fetch S&P 400 tickers from Wikipedia or cache.
 
     Args:
         use_cache: Whether to use cached CSV if available
+        track_changes: Whether to track constituent changes (forward-only)
 
     Returns:
         List of ticker symbols
@@ -126,11 +284,24 @@ def get_sp400_constituents(use_cache: bool = True) -> list[str]:
         df = pd.read_csv(cache_file)
         return df["Symbol"].tolist()
 
+    # Load previous tickers for change tracking
+    previous_tickers = None
+    if track_changes and cache_file.exists():
+        try:
+            df = pd.read_csv(cache_file)
+            previous_tickers = df["Symbol"].tolist()
+        except Exception:
+            pass
+
     try:
         tables = fetch_wikipedia_table(SP400_URL)
         df = tables[0]
         # Clean ticker symbols
         tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
+
+        # Track changes before caching (forward-only)
+        if track_changes and previous_tickers:
+            track_constituent_changes("SP400", tickers, previous_tickers)
 
         # Cache the result
         pd.DataFrame({"Symbol": tickers}).to_csv(cache_file, index=False)
@@ -144,11 +315,12 @@ def get_sp400_constituents(use_cache: bool = True) -> list[str]:
         return []
 
 
-def get_sp600_constituents(use_cache: bool = True) -> list[str]:
+def get_sp600_constituents(use_cache: bool = True, track_changes: bool = True) -> list[str]:
     """Fetch S&P 600 tickers from Wikipedia or cache.
 
     Args:
         use_cache: Whether to use cached CSV if available
+        track_changes: Whether to track constituent changes (forward-only)
 
     Returns:
         List of ticker symbols
@@ -160,11 +332,24 @@ def get_sp600_constituents(use_cache: bool = True) -> list[str]:
         df = pd.read_csv(cache_file)
         return df["Symbol"].tolist()
 
+    # Load previous tickers for change tracking
+    previous_tickers = None
+    if track_changes and cache_file.exists():
+        try:
+            df = pd.read_csv(cache_file)
+            previous_tickers = df["Symbol"].tolist()
+        except Exception:
+            pass
+
     try:
         tables = fetch_wikipedia_table(SP600_URL)
         df = tables[0]
         # Clean ticker symbols
         tickers = df["Symbol"].str.replace(".", "-", regex=False).tolist()
+
+        # Track changes before caching (forward-only)
+        if track_changes and previous_tickers:
+            track_constituent_changes("SP600", tickers, previous_tickers)
 
         # Cache the result
         pd.DataFrame({"Symbol": tickers}).to_csv(cache_file, index=False)
@@ -359,7 +544,18 @@ def fetch_finviz_breadth() -> dict:
         - new_high: count at new highs
         - new_low: count at new lows
         - timestamp: data timestamp
+        - status: "success", "partial", or "failed"
+        - fields_parsed: number of fields successfully parsed
+        - parse_errors: list of fields that failed to parse
     """
+    result = {
+        "timestamp": datetime.now().isoformat(),
+        "source": "finviz",
+        "status": "failed",
+        "fields_parsed": 0,
+        "parse_errors": [],
+    }
+
     try:
         url = "https://finviz.com/"
         response = requests.get(url, headers=HEADERS, timeout=15)
@@ -367,39 +563,79 @@ def fetch_finviz_breadth() -> dict:
 
         text = response.text
 
-        # Parse HTML structure: <p>Advancing</p><p>52.1% (2897)</p>
-        adv_match = re.search(r"Advancing</p><p>([\d.]+)%\s*\((\d+)\)", text)
-        dec_match = re.search(r"Declining</p><p>\((\d+)\)\s*([\d.]+)%", text)
-        high_match = re.search(r"New High</p><p>([\d.]+)%\s*\((\d+)\)", text)
-        low_match = re.search(r"New Low</p><p>\((\d+)\)\s*([\d.]+)%", text)
-
-        result = {
-            "timestamp": datetime.now().isoformat(),
-            "source": "finviz",
+        # Track parsing success per field
+        fields_to_parse = {
+            "advancing": (r"Advancing</p><p>([\d.]+)%\s*\((\d+)\)", ["advancing_pct", "advancing"]),
+            "declining": (r"Declining</p><p>\((\d+)\)\s*([\d.]+)%", ["declining", "declining_pct"]),
+            "new_high": (r"New High</p><p>([\d.]+)%\s*\((\d+)\)", ["new_high_pct", "new_high"]),
+            "new_low": (r"New Low</p><p>\((\d+)\)\s*([\d.]+)%", ["new_low", "new_low_pct"]),
         }
 
-        if adv_match:
-            result["advancing_pct"] = float(adv_match.group(1))
-            result["advancing"] = int(adv_match.group(2))
+        # Type converters for each field
+        type_converters = {
+            "advancing": int,
+            "advancing_pct": float,
+            "declining": int,
+            "declining_pct": float,
+            "new_high": int,
+            "new_high_pct": float,
+            "new_low": int,
+            "new_low_pct": float,
+        }
 
-        if dec_match:
-            result["declining"] = int(dec_match.group(1))
-            result["declining_pct"] = float(dec_match.group(2))
+        for field_name, (pattern, field_keys) in fields_to_parse.items():
+            try:
+                match = re.search(pattern, text)
+                if match:
+                    for i, key in enumerate(field_keys):
+                        try:
+                            converter = type_converters[key]
+                            result[key] = converter(match.group(i + 1))
+                            result["fields_parsed"] += 1
+                        except (ValueError, IndexError) as e:
+                            result["parse_errors"].append(f"{key}: {e}")
+                            logger.warning(f"Finviz: Failed to convert {key}: {e}")
+                else:
+                    result["parse_errors"].append(f"{field_name}: pattern not found")
+                    logger.warning(f"Finviz: Could not find {field_name} pattern in HTML")
+            except Exception as e:
+                result["parse_errors"].append(f"{field_name}: {e}")
+                logger.warning(f"Finviz: Error parsing {field_name}: {e}")
 
-        if high_match:
-            result["new_high_pct"] = float(high_match.group(1))
-            result["new_high"] = int(high_match.group(2))
+        # Determine overall status
+        total_fields = len(type_converters)
+        if result["fields_parsed"] == total_fields:
+            result["status"] = "success"
+        elif result["fields_parsed"] > 0:
+            result["status"] = "partial"
+            logger.warning(
+                f"Finviz: Partial parse - {result['fields_parsed']}/{total_fields} fields. "
+                f"Errors: {result['parse_errors']}"
+            )
+        else:
+            result["status"] = "failed"
+            logger.error(f"Finviz: Complete parse failure. Errors: {result['parse_errors']}")
 
-        if low_match:
-            result["new_low"] = int(low_match.group(1))
-            result["new_low_pct"] = float(low_match.group(2))
+        if result["status"] != "failed":
+            logger.info(
+                f"Finviz breadth ({result['status']}): "
+                f"{result.get('advancing', 0)} adv / {result.get('declining', 0)} dec"
+            )
 
-        logger.info(f"Finviz breadth: {result.get('advancing', 0)} adv / {result.get('declining', 0)} dec")
         return result
 
+    except requests.exceptions.Timeout:
+        result["parse_errors"].append("Request timeout (15s)")
+        logger.error("Finviz: Request timed out after 15 seconds")
+        return result
+    except requests.exceptions.RequestException as e:
+        result["parse_errors"].append(f"Request failed: {e}")
+        logger.error(f"Finviz: Request failed: {e}")
+        return result
     except Exception as e:
-        logger.error(f"Failed to fetch Finviz breadth: {e}")
-        return {}
+        result["parse_errors"].append(f"Unexpected error: {e}")
+        logger.error(f"Finviz: Unexpected error: {e}")
+        return result
 
 
 def get_all_constituents(use_cache: bool = True) -> dict[IndexType, list[str]]:
@@ -498,6 +734,26 @@ def compute_rsi(prices: pd.Series, period: int = 14) -> pd.Series:
     rs = avg_gain / avg_loss.replace(0, np.nan)
     rsi = 100 - (100 / (1 + rs))
     return rsi
+
+
+def compute_cumulative_ad_line(close_df: pd.DataFrame) -> pd.Series:
+    """Compute cumulative Advance/Decline line.
+
+    The A/D line is a breadth indicator that shows the cumulative difference
+    between advancing and declining stocks over time. Rising A/D line indicates
+    broad market participation; divergence from price can signal trend weakness.
+
+    Args:
+        close_df: DataFrame of close prices (columns = tickers)
+
+    Returns:
+        Series with cumulative A/D values indexed by date
+    """
+    daily_returns = close_df.pct_change()
+    advancers = (daily_returns > 0).sum(axis=1)
+    decliners = (daily_returns < 0).sum(axis=1)
+    net_ad = advancers - decliners
+    return net_ad.cumsum()
 
 
 def count_advancers_decliners(close_df: pd.DataFrame, date: pd.Timestamp) -> tuple[int, int]:
@@ -830,6 +1086,9 @@ def compute_breadth_metrics_for_index(
     # Get the last N+1 trading days
     trading_days = close_df.index[-lookback_days - 1 :]
 
+    # Compute cumulative A/D line for entire history
+    cumulative_ad = compute_cumulative_ad_line(close_df)
+
     metrics_list = []
 
     for i, date in enumerate(trading_days):
@@ -844,6 +1103,7 @@ def compute_breadth_metrics_for_index(
             "index": index_name,
             "advancers": advancers,
             "decliners": decliners,
+            "cumulative_ad": cumulative_ad.get(date, np.nan) if date in cumulative_ad.index else np.nan,
             "pct_above_20ma": pct_above_ma(close_df, date, 20),
             "pct_above_50ma": pct_above_ma(close_df, date, 50),
             "pct_above_100ma": pct_above_ma(close_df, date, 100),
@@ -1333,6 +1593,186 @@ def fetch_all_breadth_data(
         return pd.concat([sp_breadth, exchange_breadth], ignore_index=True)
 
     return sp_breadth
+
+
+def compute_breadth_timeseries(
+    index_name: str,
+    years: int = 5,
+    use_cache: bool = True,
+) -> pd.DataFrame:
+    """Compute breadth metrics time-series for a single index over multiple years.
+
+    This function calculates daily breadth metrics for historical analysis and
+    time-series charting. Suitable for cumulative A/D line, % above MA charts, etc.
+
+    Args:
+        index_name: Index to compute (SP500, SP400, SP600, NYSE, NASDAQ, etc.)
+        years: Number of years of history (default 5)
+        use_cache: Use cached constituent lists
+
+    Returns:
+        DataFrame with daily breadth metrics indexed by date
+    """
+    # Get constituents based on index
+    index_map = {
+        "SP500": get_sp500_constituents,
+        "SP400": get_sp400_constituents,
+        "SP600": get_sp600_constituents,
+        "NYSE": get_nyse_constituents,
+        "NASDAQ": get_nasdaq_constituents,
+        "AMEX": get_amex_constituents,
+        "Russell2000": get_russell2000_constituents,
+        "Russell1000": get_russell1000_constituents,
+    }
+
+    if index_name not in index_map:
+        logger.warning(f"Unknown index: {index_name}")
+        return pd.DataFrame()
+
+    tickers = index_map[index_name](use_cache=use_cache)
+    if not tickers:
+        logger.warning(f"No constituents for {index_name}")
+        return pd.DataFrame()
+
+    logger.info(f"Fetching {years}-year price data for {len(tickers)} {index_name} constituents...")
+
+    # Fetch multi-year data
+    period = f"{years}y"
+    df = fetch_price_data(tickers, period=period, progress=False)
+
+    if df.empty:
+        logger.warning(f"No price data for {index_name}")
+        return pd.DataFrame()
+
+    # Extract Close prices
+    if isinstance(df.columns, pd.MultiIndex):
+        if "Close" in df.columns.get_level_values(0):
+            close_df = df["Close"]
+        else:
+            logger.warning(f"No Close prices in data for {index_name}")
+            return pd.DataFrame()
+    else:
+        close_df = df[["Close"]] if "Close" in df.columns else df
+
+    # Compute daily metrics
+    logger.info(f"Computing daily breadth metrics for {len(close_df)} days...")
+
+    # Compute cumulative A/D line
+    cumulative_ad = compute_cumulative_ad_line(close_df)
+
+    # Compute daily advancers/decliners
+    daily_returns = close_df.pct_change()
+    advancers = (daily_returns > 0).sum(axis=1)
+    decliners = (daily_returns < 0).sum(axis=1)
+    total_stocks = daily_returns.notna().sum(axis=1)
+
+    # Compute rolling MAs and % above
+    metrics_list = []
+
+    for i, date in enumerate(close_df.index):
+        if i < 200:  # Need enough history for 200 DMA
+            continue
+
+        idx = i
+
+        # Calculate MAs for all stocks
+        ma50 = close_df.iloc[idx - 49 : idx + 1].mean()
+        ma200 = close_df.iloc[idx - 199 : idx + 1].mean()
+        current_prices = close_df.iloc[idx]
+
+        # % above MA calculations
+        valid_50 = ~(current_prices.isna() | ma50.isna())
+        valid_200 = ~(current_prices.isna() | ma200.isna())
+
+        pct_above_50 = float((current_prices > ma50)[valid_50].sum() / valid_50.sum() * 100) if valid_50.sum() > 0 else np.nan
+        pct_above_200 = float((current_prices > ma200)[valid_200].sum() / valid_200.sum() * 100) if valid_200.sum() > 0 else np.nan
+
+        # Golden cross
+        valid_gc = ~(ma50.isna() | ma200.isna())
+        pct_golden = float((ma50 > ma200)[valid_gc].sum() / valid_gc.sum() * 100) if valid_gc.sum() > 0 else np.nan
+
+        # New highs/lows (52-week)
+        window_data = close_df.iloc[max(0, idx - 251) : idx + 1]
+        period_highs = window_data.max()
+        period_lows = window_data.min()
+
+        valid_hl = ~(current_prices.isna() | period_highs.isna())
+        at_high = (current_prices >= period_highs) & valid_hl
+        at_low = (current_prices <= period_lows) & valid_hl
+
+        pct_highs = float(at_high.sum() / valid_hl.sum() * 100) if valid_hl.sum() > 0 else np.nan
+        pct_lows = float(at_low.sum() / valid_hl.sum() * 100) if valid_hl.sum() > 0 else np.nan
+
+        metrics = {
+            "date": date,
+            "index": index_name,
+            "advancers": int(advancers.iloc[idx]),
+            "decliners": int(decliners.iloc[idx]),
+            "total_stocks": int(total_stocks.iloc[idx]),
+            "cumulative_ad": cumulative_ad.iloc[idx],
+            "pct_above_50ma": pct_above_50,
+            "pct_above_200ma": pct_above_200,
+            "pct_golden_cross": pct_golden,
+            "pct_52wk_highs": pct_highs,
+            "pct_52wk_lows": pct_lows,
+        }
+        metrics_list.append(metrics)
+
+    result_df = pd.DataFrame(metrics_list)
+    if not result_df.empty:
+        result_df.set_index("date", inplace=True)
+
+    logger.info(f"Computed {len(result_df)} days of breadth history for {index_name}")
+    return result_df
+
+
+def fetch_breadth_timeseries(
+    index_name: str = "SP500",
+    years: int = 5,
+    use_cache: bool = True,
+    force_refresh: bool = False,
+) -> pd.DataFrame:
+    """Fetch or compute breadth time-series with caching.
+
+    Args:
+        index_name: Index to fetch (default: SP500)
+        years: Number of years of history
+        use_cache: Use cached data if available
+        force_refresh: Force refresh even if cache exists
+
+    Returns:
+        DataFrame with daily breadth metrics
+    """
+    ensure_dirs()
+
+    cache_file = PROCESSED_DIR / f"breadth_timeseries_{index_name.lower()}.parquet"
+
+    # Check cache
+    if use_cache and not force_refresh and cache_file.exists():
+        try:
+            cache_mtime = datetime.fromtimestamp(cache_file.stat().st_mtime)
+            cache_age_hours = (datetime.now() - cache_mtime).total_seconds() / 3600
+
+            # Use cache if less than 24 hours old
+            if cache_age_hours < 24:
+                logger.info(f"Loading cached breadth timeseries for {index_name} (age: {cache_age_hours:.1f} hours)")
+                return pd.read_parquet(cache_file)
+        except Exception as e:
+            logger.warning(f"Could not read cache: {e}")
+
+    # Compute fresh data
+    logger.info(f"Computing fresh breadth timeseries for {index_name}...")
+    df = compute_breadth_timeseries(index_name, years=years, use_cache=True)
+
+    # Cache result
+    if not df.empty:
+        try:
+            df.to_parquet(cache_file)
+            logger.info(f"Cached breadth timeseries to {cache_file}")
+        except Exception as e:
+            logger.warning(f"Could not cache breadth timeseries: {e}")
+
+    return df
 
 
 if __name__ == "__main__":

@@ -44,21 +44,23 @@ def build_features(
     eligible_series = get_eligible_series(weekly_df, universe_cfg)
     logger.info(f"Found {len(eligible_series)} eligible series for transforms")
 
-    # Build features
-    features_df = weekly_df.copy()
+    # Collect features in lists to avoid DataFrame fragmentation
+    # This is much faster than inserting columns one at a time
+    new_features = []
+    feature_names = []
+    transform_count = 0
 
     # Apply each transform to each eligible series
-    transform_count = 0
     for transform in transforms_cfg.transforms:
         for series_id in eligible_series:
-            if series_id not in features_df.columns:
+            if series_id not in weekly_df.columns:
                 continue
 
             feature_name = f"{series_id}{FEATURE_SEPARATOR}{transform.name}"
 
             try:
                 feature_values = apply_transform(
-                    features_df[series_id],
+                    weekly_df[series_id],
                     transform.function,
                     transform.window,
                 )
@@ -67,11 +69,20 @@ def build_features(
                 feature_values = replace_inf(feature_values)
                 feature_values = winsorize(feature_values)
 
-                features_df[feature_name] = feature_values
+                new_features.append(feature_values)
+                feature_names.append(feature_name)
                 transform_count += 1
 
             except Exception as e:
                 logger.warning(f"Failed to compute {feature_name}: {e}")
+
+    # Concatenate all features at once (much faster than inserting one by one)
+    if new_features:
+        features_part = pd.concat(new_features, axis=1)
+        features_part.columns = feature_names
+        features_df = pd.concat([weekly_df, features_part], axis=1)
+    else:
+        features_df = weekly_df.copy()
 
     logger.info(f"Built {transform_count} transformed features")
 

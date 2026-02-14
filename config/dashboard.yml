@@ -1,0 +1,39 @@
+# Dashboard Configuration
+
+# Sector Scorecard Thresholds
+# Used to convert Z-scores and ROC values to letter grades (A-F)
+sector_scorecard:
+  # Trend model thresholds (based on Z-score)
+  # Grades: > threshold[0] = A, > threshold[1] = B, > threshold[2] = C, > threshold[3] = D, else F
+  trend_thresholds: [0.5, 0, -0.3, -0.7]
+
+  # Relative Strength thresholds (based on Z-score)
+  relative_strength_thresholds: [0.7, 0.2, -0.2, -0.5]
+
+  # Momentum thresholds (based on ROC * 100)
+  momentum_thresholds: [3, 1, -1, -3]
+
+# Block Heatmap Settings
+block_heatmap:
+  # Default number of weeks to show (can be overridden by date range selector)
+  default_weeks: 52
+  # Color midpoint for Z-score display
+  color_midpoint: 0
+
+# Market Breadth Thresholds
+breadth:
+  # % Above MA thresholds
+  ma_bullish: 70
+  ma_bearish: 40
+
+  # Golden Cross thresholds
+  golden_cross_bullish: 70
+  golden_cross_bearish: 30
+
+  # RSI Overbought/Oversold warning levels
+  rsi_overbought_warning: 25
+  rsi_oversold_warning: 20
+
+  # Trend Count thresholds for healthy bull market
+  trend_count_4of4_bullish: 150
+  trend_count_4of4_healthy_max: 250

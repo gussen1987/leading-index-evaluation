@@ -13,3 +13,10 @@ fred:
   rate_limit_per_minute: 120
   retry_attempts: 3
   retry_delay_seconds: 0.5
+
+fiscal_data:
+  name: "U.S. Treasury Fiscal Data"
+  enabled: true
+  rate_limit_per_minute: 30
+  retry_attempts: 3
+  retry_delay_seconds: 1.0
