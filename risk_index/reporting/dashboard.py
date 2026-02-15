@@ -324,6 +324,18 @@ def main():
         max_value=max_date,
     )
 
+    st.sidebar.markdown("---")
+    if st.sidebar.button("Refresh All Data", type="primary"):
+        with st.spinner("Refreshing all data..."):
+            fetch_all_breadth_data(
+                include_exchanges=True,
+                include_russell=True,
+                use_cache=False,
+                force_refresh=True,
+            )
+            prepare_treasury_indicators(years=5, use_cache=False)
+        st.rerun()
+
     if len(date_range) == 2:
         start_date, end_date = date_range
         mask = (data["composites"].index >= pd.Timestamp(start_date)) & (
@@ -1072,10 +1084,10 @@ topping process. Conversely, improving breadth during a pullback suggests underl
             # Options for which indices to include
             col1, col2, col3 = st.columns(3)
             with col1:
-                include_exchanges = st.checkbox("Include NYSE/NASDAQ", value=False,
+                include_exchanges = st.checkbox("Include NYSE/NASDAQ", value=True,
                     help="Add NYSE (~2300) and NASDAQ (~4000) stocks")
             with col2:
-                include_russell = st.checkbox("Include Russell 1000/2000", value=False,
+                include_russell = st.checkbox("Include Russell 1000/2000", value=True,
                     help="Add Russell 1000 (~1000) and Russell 2000 (~2000) stocks")
             with col3:
                 if st.button("Refresh All Data"):
@@ -1496,7 +1508,7 @@ for current readings. Look for:
                 # Info
                 st.divider()
                 indices_loaded = breadth_df["index"].unique().tolist()
-                st.caption(f"Indices loaded: {', '.join(indices_loaded)}. Use checkboxes above to add more.")
+                st.caption(f"Indices loaded: {', '.join(indices_loaded)}. Uncheck boxes above to exclude indices.")
 
         except Exception as e:
             st.error(f"Error loading breadth data: {e}")
