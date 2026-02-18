@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 import plotly.express as px
@@ -1376,6 +1377,456 @@ def create_cumulative_tax_chart(
             xanchor="right",
             x=1
         ),
+    )
+
+    return fig
+
+
+# Investment Clock quadrant colors
+CLOCK_COLORS = {
+    "recovery": "#2ecc71",     # Green
+    "overheat": "#f39c12",     # Orange
+    "stagflation": "#e74c3c",  # Red
+    "reflation": "#3498db",    # Blue
+}
+
+# Risk Matrix regime colors
+GRID_COLORS = {
+    "goldilocks": "#2ecc71",
+    "reflation": "#f39c12",
+    "inflation": "#e74c3c",
+    "deflation": "#3498db",
+}
+
+
+def create_investment_clock_polar(
+    growth: pd.Series,
+    inflation: pd.Series,
+    quadrant: pd.Series,
+    n_trail: int = 12,
+) -> go.Figure:
+    """Create polar/scatter Investment Clock chart with trailing path.
+
+    Shows current position on growth-vs-inflation 2D space with a trailing
+    path of the last n_trail months. Quadrant backgrounds color-coded.
+
+    Args:
+        growth: Growth composite score series
+        inflation: Inflation composite score series
+        quadrant: Quadrant label series
+        n_trail: Number of trailing months to show
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if growth.empty or inflation.empty:
+        fig.add_annotation(
+            text="No investment clock data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=500)
+        return fig
+
+    # Get last n_trail + 1 points
+    g = growth.iloc[-(n_trail + 1):]
+    inf = inflation.iloc[-(n_trail + 1):]
+    q = quadrant.iloc[-(n_trail + 1):]
+
+    # Normalize to roughly [-1, 1] for display
+    g_max = max(abs(growth.max()), abs(growth.min()), 1)
+    i_max = max(abs(inflation.max()), abs(inflation.min()), 1)
+    g_norm = g / g_max
+    i_norm = inf / i_max
+
+    # Add quadrant background rectangles
+    for qname, color in CLOCK_COLORS.items():
+        x0 = 0 if qname in ("recovery", "overheat") else -1.2
+        x1 = 1.2 if qname in ("recovery", "overheat") else 0
+        y0 = 0 if qname in ("overheat", "stagflation") else -1.2
+        y1 = 1.2 if qname in ("overheat", "stagflation") else 0
+        fig.add_shape(
+            type="rect", x0=x0, y0=y0, x1=x1, y1=y1,
+            fillcolor=color, opacity=0.12, line_width=0,
+            layer="below",
+        )
+
+    # Add quadrant labels
+    label_positions = {
+        "Recovery": (0.6, -0.6),
+        "Overheat": (0.6, 0.6),
+        "Stagflation": (-0.6, 0.6),
+        "Reflation": (-0.6, -0.6),
+    }
+    for label, (lx, ly) in label_positions.items():
+        fig.add_annotation(
+            x=lx, y=ly, text=f"<b>{label}</b>",
+            showarrow=False, font=dict(size=13, color="gray"),
+        )
+
+    # Trail line (fading)
+    fig.add_trace(
+        go.Scatter(
+            x=g_norm.values,
+            y=i_norm.values,
+            mode="lines+markers",
+            name="Trail",
+            line=dict(color="rgba(100,100,100,0.4)", width=1.5),
+            marker=dict(
+                size=[4 + i * 1.5 for i in range(len(g_norm))],
+                color=[CLOCK_COLORS.get(qv, "gray") for qv in q.values],
+                opacity=[0.3 + 0.7 * (i / len(g_norm)) for i in range(len(g_norm))],
+            ),
+            text=[f"{d.strftime('%Y-%m')}" for d in g_norm.index],
+            hovertemplate="Growth: %{x:.2f}<br>Inflation: %{y:.2f}<br>%{text}<extra></extra>",
+        )
+    )
+
+    # Current position (large marker)
+    current_q = q.iloc[-1]
+    fig.add_trace(
+        go.Scatter(
+            x=[g_norm.iloc[-1]],
+            y=[i_norm.iloc[-1]],
+            mode="markers",
+            name="Current",
+            marker=dict(
+                size=18, color=CLOCK_COLORS.get(current_q, "gray"),
+                line=dict(width=2, color="black"),
+                symbol="diamond",
+            ),
+            hovertemplate=f"<b>{current_q.title()}</b><br>Growth: %{{x:.2f}}<br>Inflation: %{{y:.2f}}<extra></extra>",
+        )
+    )
+
+    # Axes
+    fig.add_hline(y=0, line_dash="solid", line_color="gray", opacity=0.5)
+    fig.add_vline(x=0, line_dash="solid", line_color="gray", opacity=0.5)
+
+    fig.update_layout(
+        title="Investment Clock Position",
+        xaxis_title="Growth Score (normalized)",
+        yaxis_title="Inflation Score (normalized)",
+        xaxis=dict(range=[-1.2, 1.2], zeroline=False),
+        yaxis=dict(range=[-1.2, 1.2], zeroline=False, scaleanchor="x"),
+        height=500,
+        showlegend=False,
+    )
+
+    return fig
+
+
+def create_growth_inflation_timeseries(
+    growth: pd.Series,
+    inflation: pd.Series,
+    quadrant: pd.Series | None = None,
+) -> go.Figure:
+    """Create dual-line time series of growth and inflation composite scores.
+
+    Args:
+        growth: Growth composite score series
+        inflation: Inflation composite score series
+        quadrant: Optional quadrant series for background shading
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if growth.empty and inflation.empty:
+        fig.add_annotation(
+            text="No data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=450)
+        return fig
+
+    # Add quadrant background shading
+    if quadrant is not None and not quadrant.empty:
+        spans = []
+        current_q = quadrant.iloc[0]
+        start_date = quadrant.index[0]
+        for i, (date, q) in enumerate(quadrant.items()):
+            if q != current_q or i == len(quadrant) - 1:
+                spans.append((start_date, date, current_q))
+                current_q = q
+                start_date = date
+        for s, e, q in spans:
+            color = CLOCK_COLORS.get(q, "gray")
+            fig.add_vrect(
+                x0=s, x1=e,
+                fillcolor=color, opacity=0.08, line_width=0, layer="below",
+            )
+
+    if not growth.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=growth.index, y=growth.values,
+                mode="lines", name="Growth",
+                line=dict(color=CLOCK_COLORS["recovery"], width=2),
+            )
+        )
+
+    if not inflation.empty:
+        fig.add_trace(
+            go.Scatter(
+                x=inflation.index, y=inflation.values,
+                mode="lines", name="Inflation",
+                line=dict(color=CLOCK_COLORS["overheat"], width=2),
+            )
+        )
+
+    fig.add_hline(y=0, line_dash="dash", line_color="gray", opacity=0.5)
+
+    fig.update_layout(
+        title="Growth & Inflation Composite Scores",
+        xaxis_title="Date",
+        yaxis_title="Composite Score (sum of indicators)",
+        height=450,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="left", x=0.01),
+    )
+
+    return fig
+
+
+def create_clock_regime_timeline(quadrant_series: pd.Series) -> go.Figure:
+    """Create step-function timeline of Investment Clock quadrant changes.
+
+    Args:
+        quadrant_series: Series of quadrant labels (recovery/overheat/stagflation/reflation)
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if quadrant_series.empty:
+        fig.add_annotation(
+            text="No regime data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=350)
+        return fig
+
+    # Map to numeric for plotting
+    quadrant_map = {
+        "recovery": 1,
+        "overheat": 2,
+        "stagflation": 3,
+        "reflation": 4,
+    }
+    numeric = quadrant_series.map(quadrant_map).fillna(0)
+
+    fig.add_trace(
+        go.Scatter(
+            x=numeric.index, y=numeric.values,
+            mode="lines", name="Quadrant",
+            line=dict(color="black", width=2, shape="hv"),
+        )
+    )
+
+    # Add quadrant shading
+    spans = []
+    current_q = quadrant_series.iloc[0]
+    start_date = quadrant_series.index[0]
+    for i, (date, q) in enumerate(quadrant_series.items()):
+        if q != current_q or i == len(quadrant_series) - 1:
+            spans.append((start_date, date, current_q))
+            current_q = q
+            start_date = date
+    for s, e, q in spans:
+        color = CLOCK_COLORS.get(q, "gray")
+        fig.add_vrect(
+            x0=s, x1=e,
+            fillcolor=color, opacity=0.15, line_width=0, layer="below",
+        )
+
+    fig.update_layout(
+        title="Investment Clock Regime Timeline",
+        xaxis_title="Date",
+        yaxis_title="Quadrant",
+        yaxis=dict(
+            tickmode="array",
+            tickvals=[1, 2, 3, 4],
+            ticktext=["Recovery", "Overheat", "Stagflation", "Reflation"],
+            range=[0.5, 4.5],
+        ),
+        height=350,
+        hovermode="x unified",
+        showlegend=False,
+    )
+
+    return fig
+
+
+def create_risk_matrix_stacked_area(regime_shares: pd.DataFrame) -> go.Figure:
+    """Create stacked area chart of regime share over time.
+
+    Args:
+        regime_shares: DataFrame with columns for each regime (goldilocks, reflation, etc.)
+            Values are percentages (0-100).
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if regime_shares.empty:
+        fig.add_annotation(
+            text="No regime share data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=450)
+        return fig
+
+    # Stack order: goldilocks, reflation, inflation, deflation
+    stack_order = ["goldilocks", "reflation", "inflation", "deflation"]
+    labels = {
+        "goldilocks": "Goldilocks",
+        "reflation": "Reflation",
+        "inflation": "Inflation",
+        "deflation": "Deflation",
+    }
+
+    for regime in stack_order:
+        if regime in regime_shares.columns:
+            fig.add_trace(
+                go.Scatter(
+                    x=regime_shares.index,
+                    y=regime_shares[regime].values,
+                    mode="lines",
+                    name=labels.get(regime, regime),
+                    stackgroup="one",
+                    line=dict(width=0.5, color=GRID_COLORS.get(regime, "gray")),
+                    fillcolor=GRID_COLORS.get(regime, "gray"),
+                    hovertemplate=f"{labels.get(regime, regime)}: %{{y:.1f}}%<extra></extra>",
+                )
+            )
+
+    # 50% decisive threshold
+    fig.add_hline(y=50, line_dash="dash", line_color="white", opacity=0.7,
+                  annotation_text="Decisive (50%)")
+
+    fig.update_layout(
+        title="Share of Confirming Markets by Regime",
+        xaxis_title="Date",
+        yaxis_title="Share (%)",
+        yaxis=dict(range=[0, 100]),
+        height=450,
+        hovermode="x unified",
+        legend=dict(yanchor="top", y=0.99, xanchor="right", x=0.99),
+    )
+
+    return fig
+
+
+def create_risk_matrix_category_bars(category_scores: pd.DataFrame) -> go.Figure:
+    """Create horizontal bar chart of average VAMS by asset category.
+
+    Args:
+        category_scores: DataFrame with category columns, using latest row
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if category_scores.empty:
+        fig.add_annotation(
+            text="No category data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=350)
+        return fig
+
+    # Use latest values
+    latest = category_scores.iloc[-1].sort_values()
+
+    colors = [
+        COLORS["risk_on"] if v > 0 else COLORS["risk_off"]
+        for v in latest.values
+    ]
+
+    fig.add_trace(
+        go.Bar(
+            x=latest.values,
+            y=[c.replace("_", " ").title() for c in latest.index],
+            orientation="h",
+            marker_color=colors,
+            text=[f"{v:.2f}" for v in latest.values],
+            textposition="outside",
+        )
+    )
+
+    fig.add_vline(x=0, line_dash="solid", line_color="gray")
+
+    fig.update_layout(
+        title="Average VAMS by Category (Latest)",
+        xaxis_title="Average VAMS",
+        height=350,
+        margin=dict(l=120),
+    )
+
+    return fig
+
+
+def create_vams_heatmap(current_snapshot: pd.DataFrame) -> go.Figure:
+    """Create heatmap of VAMS values for all assets grouped by category.
+
+    Args:
+        current_snapshot: DataFrame with Ticker, Name, Category, VAMS columns
+
+    Returns:
+        Plotly figure
+    """
+    fig = go.Figure()
+
+    if current_snapshot.empty or "VAMS" not in current_snapshot.columns:
+        fig.add_annotation(
+            text="No VAMS data available",
+            xref="paper", yref="paper",
+            x=0.5, y=0.5, showarrow=False,
+            font=dict(size=16, color="gray")
+        )
+        fig.update_layout(height=400)
+        return fig
+
+    # Sort by category then VAMS
+    df = current_snapshot.dropna(subset=["VAMS"]).copy()
+    df = df.sort_values(["Category", "VAMS"], ascending=[True, False])
+
+    labels = [f"{row['Name']} ({row['Ticker']})" for _, row in df.iterrows()]
+    values = df["VAMS"].values.reshape(1, -1)
+
+    fig.add_trace(
+        go.Heatmap(
+            z=values,
+            x=labels,
+            y=["VAMS"],
+            colorscale="RdYlGn",
+            zmid=0,
+            colorbar=dict(title="VAMS"),
+            hovertemplate="%{x}<br>VAMS: %{z:.3f}<extra></extra>",
+        )
+    )
+
+    fig.update_layout(
+        title="VAMS Heatmap (All Assets)",
+        height=200,
+        xaxis=dict(tickangle=-45, tickfont=dict(size=9)),
+        margin=dict(b=120),
     )
 
     return fig

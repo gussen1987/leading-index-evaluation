@@ -49,7 +49,15 @@ from risk_index.reporting.charts import (
     create_ytd_comparison_chart,
     create_tax_vs_spy_chart,
     create_gig_economy_chart,
+    create_investment_clock_polar,
+    create_growth_inflation_timeseries,
+    create_clock_regime_timeline,
+    create_risk_matrix_stacked_area,
+    create_risk_matrix_category_bars,
+    create_vams_heatmap,
     COLORS,
+    CLOCK_COLORS,
+    GRID_COLORS,
 )
 from risk_index.research.backtest_regimes import (
     run_all_regime_backtests,
@@ -65,6 +73,12 @@ from risk_index.pipeline.breadth_fetch import (
 )
 from risk_index.pipeline.treasury_fetch import (
     prepare_treasury_indicators,
+)
+from risk_index.pipeline.investment_clock_fetch import (
+    prepare_investment_clock,
+)
+from risk_index.pipeline.risk_matrix_fetch import (
+    prepare_risk_matrix,
 )
 
 
@@ -348,6 +362,14 @@ def main():
                 force_refresh=True,
             )
             prepare_treasury_indicators(years=5, use_cache=False)
+            try:
+                prepare_investment_clock(years=15, use_cache=False)
+            except Exception:
+                pass
+            try:
+                prepare_risk_matrix(years=5, use_cache=False)
+            except Exception:
+                pass
         st.rerun()
 
     if len(date_range) == 2:
@@ -411,8 +433,8 @@ def main():
         st.caption(f"Data as of: {latest_date.strftime('%Y-%m-%d')}")
 
     # Tabs for different views
-    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10 = st.tabs(
-        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership", "Market Breadth", "Sector Scorecard", "Treasury Tax Flow"]
+    tab1, tab2, tab3, tab4, tab5, tab6, tab7, tab8, tab9, tab10, tab11, tab12 = st.tabs(
+        ["Composites", "Blocks", "Checklist", "Attribution", "Composition", "Backtest", "Factor Leadership", "Market Breadth", "Sector Scorecard", "Treasury Tax Flow", "Investment Clock", "Risk Matrix"]
     )
 
     with tab1:
@@ -1909,6 +1931,328 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
 
         except Exception as e:
             st.error(f"Error loading treasury data: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    with tab11:
+        st.subheader("Investment Clock")
+        _show_last_updated(PROCESSED_DIR / "investment_clock_latest.parquet")
+
+        with st.expander("Understanding the Investment Clock", expanded=False):
+            st.markdown("""
+**What is the Investment Clock?**
+
+Trevor Greetham's Investment Clock classifies the macro environment into 4 quadrants
+based on growth and inflation momentum, measured via dual moving-average crossovers
+on FRED economic data.
+
+**The 4 Quadrants:**
+| Quadrant | Growth | Inflation | Best Assets |
+|----------|--------|-----------|-------------|
+| **Recovery** | Rising | Falling | Equities, HY Credit, Cyclicals |
+| **Overheat** | Rising | Rising | Commodities, TIPS, Energy |
+| **Stagflation** | Falling | Rising | Cash, Gold, Defensives |
+| **Reflation** | Falling | Falling | Bonds, Duration, IG Credit |
+
+**Scoring Method:**
+- 8 growth indicators and 7 inflation indicators from FRED
+- Each scored +1 (above both 6m and 12m MAs), 0 (mixed), or -1 (below both)
+- Sums determine quadrant classification
+
+**Growth Indicators:** Industrial Production, Nonfarm Payrolls, Unemployment (inv),
+Initial Claims (inv), Consumer Sentiment, Housing Starts, Retail Sales, ISM PMI
+
+**Inflation Indicators:** CPI, Core CPI, PCE, PPI, 5Y Breakeven, 10Y Breakeven, WTI Oil
+            """)
+
+        try:
+            with st.spinner("Loading Investment Clock data..."):
+                clock_data = prepare_investment_clock(years=15, use_cache=True)
+
+            if clock_data["status"] == "failed":
+                st.error("Failed to load Investment Clock data. Ensure FRED_API_KEY is set.")
+            else:
+                growth = clock_data["growth_score"]
+                inflation = clock_data["inflation_score"]
+                quadrant = clock_data["quadrant"]
+
+                if not quadrant.empty:
+                    current_q = quadrant.iloc[-1]
+                    q_color = CLOCK_COLORS.get(current_q, "gray")
+
+                    # Metrics row
+                    c1, c2, c3, c4 = st.columns(4)
+                    with c1:
+                        st.metric("Current Quadrant", current_q.title())
+                    with c2:
+                        g_max = len(clock_data.get("growth_components", pd.DataFrame()).columns)
+                        st.metric("Growth Score", f"{growth.iloc[-1]:.0f} / {g_max}")
+                    with c3:
+                        i_max = len(clock_data.get("inflation_components", pd.DataFrame()).columns)
+                        st.metric("Inflation Score", f"{inflation.iloc[-1]:.0f} / {i_max}")
+                    with c4:
+                        # Months in current quadrant
+                        streak = 0
+                        for val in reversed(quadrant.values):
+                            if val == current_q:
+                                streak += 1
+                            else:
+                                break
+                        st.metric("Months in Quadrant", streak)
+
+                    st.divider()
+
+                    # Charts
+                    col_l, col_r = st.columns([1, 1])
+                    with col_l:
+                        fig_polar = create_investment_clock_polar(growth, inflation, quadrant)
+                        st.plotly_chart(fig_polar)
+                    with col_r:
+                        fig_ts = create_growth_inflation_timeseries(growth, inflation, quadrant)
+                        st.plotly_chart(fig_ts)
+
+                    fig_timeline = create_clock_regime_timeline(quadrant)
+                    st.plotly_chart(fig_timeline)
+
+                    st.divider()
+
+                    # Indicator detail sub-tabs
+                    ind_tabs = st.tabs(["Growth Indicators", "Inflation Indicators", "Asset Allocation"])
+
+                    with ind_tabs[0]:
+                        g_comp = clock_data.get("growth_components", pd.DataFrame())
+                        if not g_comp.empty:
+                            latest_g = g_comp.iloc[-1]
+                            g_table = []
+                            for col in g_comp.columns:
+                                score = latest_g.get(col, 0)
+                                signal = "Positive" if score > 0 else ("Negative" if score < 0 else "Neutral")
+                                g_table.append({
+                                    "Indicator": col,
+                                    "Score": int(score),
+                                    "Signal": signal,
+                                })
+                            g_df = pd.DataFrame(g_table)
+
+                            def color_score(val):
+                                if val > 0:
+                                    return "background-color: rgba(46, 204, 113, 0.4)"
+                                elif val < 0:
+                                    return "background-color: rgba(231, 76, 60, 0.4)"
+                                return "background-color: rgba(243, 156, 18, 0.2)"
+
+                            styled = g_df.style.map(color_score, subset=["Score"])
+                            st.dataframe(styled, width="stretch", hide_index=True)
+                        else:
+                            st.info("No growth component data available.")
+
+                    with ind_tabs[1]:
+                        i_comp = clock_data.get("inflation_components", pd.DataFrame())
+                        if not i_comp.empty:
+                            latest_i = i_comp.iloc[-1]
+                            i_table = []
+                            for col in i_comp.columns:
+                                score = latest_i.get(col, 0)
+                                signal = "Rising" if score > 0 else ("Falling" if score < 0 else "Neutral")
+                                i_table.append({
+                                    "Indicator": col,
+                                    "Score": int(score),
+                                    "Signal": signal,
+                                })
+                            i_df = pd.DataFrame(i_table)
+
+                            def color_inf_score(val):
+                                if val > 0:
+                                    return "background-color: rgba(243, 156, 18, 0.4)"
+                                elif val < 0:
+                                    return "background-color: rgba(52, 152, 219, 0.4)"
+                                return "background-color: rgba(200, 200, 200, 0.2)"
+
+                            styled = i_df.style.map(color_inf_score, subset=["Score"])
+                            st.dataframe(styled, width="stretch", hide_index=True)
+                        else:
+                            st.info("No inflation component data available.")
+
+                    with ind_tabs[2]:
+                        st.markdown("### Preferred Assets by Quadrant")
+                        config_path = CONFIG_DIR / "macro_regimes.yml"
+                        if config_path.exists():
+                            mr_config = read_yaml(config_path)
+                            quadrants = mr_config.get("investment_clock", {}).get("quadrants", {})
+                            alloc_data = []
+                            for qname, qinfo in quadrants.items():
+                                alloc_data.append({
+                                    "Quadrant": qinfo.get("label", qname),
+                                    "Description": qinfo.get("description", ""),
+                                    "Preferred Assets": ", ".join(qinfo.get("preferred_assets", [])),
+                                })
+                            if alloc_data:
+                                alloc_df = pd.DataFrame(alloc_data)
+
+                                def color_alloc_row(row):
+                                    q = row.get("Quadrant", "").lower()
+                                    color = CLOCK_COLORS.get(q, "gray")
+                                    return [f"background-color: {color}22"] * len(row)
+
+                                styled = alloc_df.style.apply(color_alloc_row, axis=1)
+                                st.dataframe(styled, width="stretch", hide_index=True)
+
+                else:
+                    st.warning("No Investment Clock data available.")
+
+                # Refresh button
+                st.divider()
+                if st.button("Refresh Investment Clock Data"):
+                    with st.spinner("Fetching FRED data (may take 30-60 seconds)..."):
+                        prepare_investment_clock(years=15, use_cache=False)
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Error loading Investment Clock: {e}")
+            import traceback
+            st.code(traceback.format_exc())
+
+    with tab12:
+        st.subheader("42 Macro Risk Matrix")
+        _show_last_updated(PROCESSED_DIR / "risk_matrix_latest.parquet")
+
+        with st.expander("Understanding the Risk Matrix", expanded=False):
+            st.markdown("""
+**What is the Risk Matrix?**
+
+Inspired by Darius Dale's 42 Macro framework, this tab scores ~40 market prices
+daily using VAMS (Volatility-Adjusted Momentum Signal) and maps each to 4 macro regimes.
+
+**VAMS Formula:**
+`VAMS = (Price - SMA) / (StdDev × √lookback)`
+
+**The 4 Regimes:**
+| Regime | Growth | Inflation | Characteristics |
+|--------|--------|-----------|-----------------|
+| **Goldilocks** | Rising | Falling | Risk-on paradise, equities + credit rally |
+| **Reflation** | Rising | Rising | Cyclical, commodities and EM lead |
+| **Inflation** | Falling | Rising | Stagflationary, vol + USD rise |
+| **Deflation** | Falling | Falling | Risk-off, bonds + safe havens rally |
+
+**Regime Confirmation Logic:**
+- Risk assets (equities, HY, EM): Bullish → Goldilocks/Reflation, Bearish → Inflation/Deflation
+- Defensive assets (treasuries, USD, VIX): Bullish → Inflation/Deflation, Bearish → Goldilocks/Reflation
+- Dominant regime = highest share of confirming markets (>50% = decisive)
+
+**CACRI (Counter-cyclical Asset Risk Indicator):**
+Sum of Inflation + Deflation shares. Rising CACRI = risk-off building.
+
+**Asset Universe:** ~40 assets across equities, fixed income, commodities, FX, volatility, alternatives + 3 ratios.
+            """)
+
+        try:
+            # Lookback selector in sidebar-like area
+            lookback_col, _ = st.columns([1, 3])
+            with lookback_col:
+                lookback_months = st.selectbox(
+                    "VAMS Lookback",
+                    options=[1, 2, 3, 6],
+                    index=2,
+                    format_func=lambda x: f"{x} month{'s' if x > 1 else ''} ({x * 21} days)",
+                    key="rm_lookback",
+                )
+            rm_lookback = lookback_months * 21
+
+            with st.spinner("Loading Risk Matrix data..."):
+                matrix_data = prepare_risk_matrix(
+                    lookback=rm_lookback, years=5, use_cache=True,
+                )
+
+            if matrix_data["status"] == "failed":
+                st.error("Failed to load Risk Matrix data. Check network connection.")
+            else:
+                regime_shares = matrix_data["regime_shares"]
+                dominant = matrix_data["dominant_regime"]
+                cacri = matrix_data["cacri"]
+                snapshot = matrix_data["current_snapshot"]
+
+                if not dominant.empty:
+                    current_regime = dominant.iloc[-1]
+                    r_color = GRID_COLORS.get(current_regime, "gray")
+
+                    # Metrics row
+                    m1, m2, m3, m4 = st.columns(4)
+                    with m1:
+                        st.metric("Dominant Regime", current_regime.title())
+                    with m2:
+                        strength = regime_shares[current_regime].iloc[-1] if current_regime in regime_shares.columns else 0
+                        st.metric("Strength", f"{strength:.1f}%")
+                    with m3:
+                        cacri_val = cacri.iloc[-1] if not cacri.empty else 0
+                        st.metric("CACRI", f"{cacri_val:.1f}%")
+                    with m4:
+                        # Weekly change in dominant regime share
+                        if len(regime_shares) > 5 and current_regime in regime_shares.columns:
+                            week_ago = regime_shares[current_regime].iloc[-6]
+                            delta = strength - week_ago
+                            st.metric("Weekly Change", f"{delta:+.1f}%")
+                        else:
+                            st.metric("Weekly Change", "N/A")
+
+                    st.divider()
+
+                    # Stacked area chart
+                    fig_stacked = create_risk_matrix_stacked_area(regime_shares)
+                    st.plotly_chart(fig_stacked)
+
+                    # Category breakdown and heatmap
+                    cat_col, heat_col = st.columns([1, 2])
+                    with cat_col:
+                        cat_scores = matrix_data.get("category_scores", pd.DataFrame())
+                        if not cat_scores.empty:
+                            fig_cat = create_risk_matrix_category_bars(cat_scores)
+                            st.plotly_chart(fig_cat)
+
+                    with heat_col:
+                        if not snapshot.empty:
+                            fig_heat = create_vams_heatmap(snapshot)
+                            st.plotly_chart(fig_heat)
+
+                    st.divider()
+
+                    # Detailed asset signal table
+                    st.markdown("### Asset Signals")
+                    if not snapshot.empty:
+                        display_snap = snapshot.copy()
+
+                        def color_vams_signal(val):
+                            if val == "Bullish":
+                                return "background-color: rgba(46, 204, 113, 0.4)"
+                            elif val == "Bearish":
+                                return "background-color: rgba(231, 76, 60, 0.4)"
+                            return "background-color: rgba(243, 156, 18, 0.2)"
+
+                        styled_snap = display_snap.style.map(
+                            color_vams_signal, subset=["Signal"]
+                        )
+                        st.dataframe(styled_snap, width="stretch", hide_index=True, height=500)
+
+                        # Summary counts
+                        signal_counts = snapshot["Signal"].value_counts()
+                        sc1, sc2, sc3 = st.columns(3)
+                        with sc1:
+                            st.metric("Bullish", signal_counts.get("Bullish", 0))
+                        with sc2:
+                            st.metric("Bearish", signal_counts.get("Bearish", 0))
+                        with sc3:
+                            st.metric("Neutral", signal_counts.get("Neutral", 0))
+                else:
+                    st.warning("No Risk Matrix data available.")
+
+                # Refresh button
+                st.divider()
+                if st.button("Refresh Risk Matrix Data"):
+                    with st.spinner("Fetching market data (may take 30-60 seconds)..."):
+                        prepare_risk_matrix(lookback=rm_lookback, years=5, use_cache=False)
+                    st.rerun()
+
+        except Exception as e:
+            st.error(f"Error loading Risk Matrix: {e}")
             import traceback
             st.code(traceback.format_exc())
 

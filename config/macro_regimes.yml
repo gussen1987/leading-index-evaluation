@@ -1,0 +1,200 @@
+# Macro Regime Detection Configuration
+# Two complementary frameworks: Investment Clock (economic data) + Risk Matrix (market prices)
+
+# =============================================================================
+# Investment Clock (Trevor Greetham methodology)
+# =============================================================================
+# Uses FRED economic data scored via dual moving average crossovers.
+# Monthly frequency. Classifies into 4 quadrants based on growth + inflation.
+investment_clock:
+  scoring:
+    ma_short: 6   # Short-term moving average (months)
+    ma_long: 12   # Long-term moving average (months)
+
+  # Growth indicators: each scored +1/0/-1 via dual-MA of YoY change
+  # "invert: true" means lower values = better growth (e.g., unemployment)
+  growth_indicators:
+    - series_id: INDPRO
+      description: "Industrial Production Index"
+      transform: yoy
+      invert: false
+    - series_id: PAYEMS
+      description: "Nonfarm Payrolls"
+      transform: yoy
+      invert: false
+    - series_id: UNRATE
+      description: "Unemployment Rate"
+      transform: level
+      invert: true
+    - series_id: ICSA
+      description: "Initial Jobless Claims"
+      transform: level
+      invert: true
+    - series_id: UMCSENT
+      description: "Consumer Sentiment (UMich)"
+      transform: level
+      invert: false
+    - series_id: HOUST
+      description: "Housing Starts"
+      transform: yoy
+      invert: false
+    - series_id: RSAFS
+      description: "Retail Sales"
+      transform: yoy
+      invert: false
+    - series_id: NAPM
+      description: "ISM Manufacturing PMI"
+      transform: level
+      invert: false
+
+  # Inflation indicators: each scored +1/0/-1 via dual-MA
+  inflation_indicators:
+    - series_id: CPIAUCSL
+      description: "CPI All Items"
+      transform: yoy
+      invert: false
+    - series_id: CPILFESL
+      description: "Core CPI (ex Food & Energy)"
+      transform: yoy
+      invert: false
+    - series_id: PCEPI
+      description: "PCE Price Index"
+      transform: yoy
+      invert: false
+    - series_id: PPIACO
+      description: "PPI All Commodities"
+      transform: yoy
+      invert: false
+    - series_id: T5YIE
+      description: "5Y Breakeven Inflation"
+      transform: level
+      invert: false
+    - series_id: T10YIE
+      description: "10Y Breakeven Inflation"
+      transform: level
+      invert: false
+    - series_id: DCOILWTICO
+      description: "WTI Crude Oil"
+      transform: level
+      invert: false
+
+  # Quadrant definitions
+  quadrants:
+    recovery:
+      label: "Recovery"
+      growth: positive
+      inflation: non_positive
+      color: "#2ecc71"
+      description: "Growth accelerating, inflation falling. Best for: stocks, credit"
+      preferred_assets: ["Equities", "High Yield", "Cyclicals", "Small Cap"]
+
+    overheat:
+      label: "Overheat"
+      growth: positive
+      inflation: positive
+      color: "#f39c12"
+      description: "Growth strong, inflation rising. Best for: commodities, TIPS"
+      preferred_assets: ["Commodities", "TIPS", "Energy", "Materials"]
+
+    stagflation:
+      label: "Stagflation"
+      growth: non_positive
+      inflation: positive
+      color: "#e74c3c"
+      description: "Growth slowing, inflation sticky. Best for: cash, gold"
+      preferred_assets: ["Cash", "Gold", "Utilities", "Short Duration"]
+
+    reflation:
+      label: "Reflation"
+      growth: non_positive
+      inflation: non_positive
+      color: "#3498db"
+      description: "Growth weak, inflation falling. Best for: bonds, duration"
+      preferred_assets: ["Long Treasuries", "Investment Grade", "Defensive", "Duration"]
+
+
+# =============================================================================
+# Risk Matrix (42 Macro / Darius Dale methodology)
+# =============================================================================
+# Uses ~40 market prices scored daily via VAMS (Volatility-Adjusted Momentum Signal).
+# Maps each asset's bullish/bearish state to 4 regime confirmations.
+risk_matrix:
+  default_lookback: 63       # Trading days (~3 months)
+  vams_threshold: 0.0        # Above = bullish, below = bearish
+  decisive_share: 50         # % of confirming markets needed for decisive regime
+
+  # Asset universe grouped by category
+  # polarity: how bullish signal maps to risk regimes
+  #   +1 = risk asset (bullish confirms Goldilocks/Reflation)
+  #   -1 = defensive/vol (bullish confirms Deflation/Inflation)
+  #   0  = neutral/special
+  assets:
+    equities:
+      - { ticker: SPY,  name: "S&P 500",        source: yahoo, polarity: 1 }
+      - { ticker: QQQ,  name: "Nasdaq 100",     source: yahoo, polarity: 1 }
+      - { ticker: IWM,  name: "Russell 2000",   source: yahoo, polarity: 1 }
+      - { ticker: EEM,  name: "Emerging Markets", source: yahoo, polarity: 1 }
+      - { ticker: EFA,  name: "EAFE",           source: yahoo, polarity: 1 }
+      - { ticker: FXI,  name: "China",          source: yahoo, polarity: 1 }
+      - { ticker: XLF,  name: "Financials",     source: yahoo, polarity: 1 }
+      - { ticker: XLK,  name: "Technology",     source: yahoo, polarity: 1 }
+      - { ticker: XLE,  name: "Energy",         source: yahoo, polarity: 1 }
+      - { ticker: SMH,  name: "Semiconductors", source: yahoo, polarity: 1 }
+
+    fixed_income:
+      - { ticker: TLT,  name: "20+ Year Treasury", source: yahoo, polarity: -1 }
+      - { ticker: IEF,  name: "7-10 Year Treasury", source: yahoo, polarity: -1 }
+      - { ticker: SHY,  name: "1-3 Year Treasury",  source: yahoo, polarity: -1 }
+      - { ticker: AGG,  name: "US Aggregate Bond",  source: yahoo, polarity: -1 }
+      - { ticker: HYG,  name: "High Yield Corp",    source: yahoo, polarity: 1 }
+      - { ticker: EMB,  name: "EM Bonds",           source: yahoo, polarity: 1 }
+      - { ticker: LQD,  name: "Investment Grade",   source: yahoo, polarity: 0.5 }
+      - { ticker: TIP,  name: "TIPS",               source: yahoo, polarity: 0.5 }
+
+    commodities:
+      - { ticker: GLD,  name: "Gold",            source: yahoo, polarity: -0.5 }
+      - { ticker: SLV,  name: "Silver",          source: yahoo, polarity: 1 }
+      - { ticker: USO,  name: "Crude Oil",       source: yahoo, polarity: 1 }
+      - { ticker: DBC,  name: "Commodities Broad", source: yahoo, polarity: 1 }
+      - { ticker: DBA,  name: "Agriculture",     source: yahoo, polarity: 1 }
+      - { ticker: UNG,  name: "Natural Gas",     source: yahoo, polarity: 0 }
+      - { ticker: COPX, name: "Copper Miners",   source: yahoo, polarity: 1 }
+
+    fx:
+      - { ticker: UUP,   name: "US Dollar",     source: yahoo, polarity: -1 }
+      - { ticker: FXE,   name: "Euro",          source: yahoo, polarity: 1 }
+      - { ticker: FXY,   name: "Japanese Yen",  source: yahoo, polarity: -1 }
+      - { ticker: FXA,   name: "Australian Dollar", source: yahoo, polarity: 1 }
+      - { ticker: FXB,   name: "British Pound", source: yahoo, polarity: 1 }
+      - { ticker: FXC,   name: "Canadian Dollar", source: yahoo, polarity: 1 }
+
+    volatility:
+      - { ticker: "^VIX",  name: "VIX",             source: yahoo, polarity: -1 }
+      - { ticker: "^VVIX", name: "VVIX",            source: yahoo, polarity: -1 }
+      - { ticker: BAMLH0A0HYM2, name: "HY Spread",  source: fred,  polarity: -1 }
+      - { ticker: NFCI,   name: "Financial Conditions", source: fred, polarity: -1 }
+
+    alternative:
+      - { ticker: "BTC-USD", name: "Bitcoin",     source: yahoo, polarity: 1 }
+      - { ticker: XME,      name: "Metals & Mining", source: yahoo, polarity: 1 }
+
+  # Computed ratios (from existing price data, not separate fetches)
+  ratios:
+    - { numerator: HYG, denominator: IEF, name: "HY/Treasury Ratio", polarity: 1 }
+    - { numerator: EEM, denominator: SPY, name: "EM/US Ratio",       polarity: 1 }
+    - { numerator: COPX, denominator: GLD, name: "Copper/Gold Ratio", polarity: 1 }
+
+  # Regime confirmation mapping
+  # When an asset's VAMS is bullish (+1):
+  #   polarity > 0 (risk asset):       confirms Goldilocks + Reflation
+  #   polarity < 0 (defensive/vol):    confirms Inflation + Deflation
+  # When bearish (-1), the opposite regimes are confirmed.
+  regime_mapping:
+    risk_on:        # polarity > 0, bullish
+      confirms: ["goldilocks", "reflation"]
+    risk_off:       # polarity > 0, bearish
+      confirms: ["inflation", "deflation"]
+    defensive_on:   # polarity < 0, bullish (vol up, USD up, bonds up)
+      confirms: ["inflation", "deflation"]
+    defensive_off:  # polarity < 0, bearish (vol down, USD down)
+      confirms: ["goldilocks", "reflation"]
