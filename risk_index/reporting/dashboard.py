@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from datetime import datetime
 from pathlib import Path
 
 # Add project root to path for imports
@@ -115,6 +116,19 @@ def regime_color(regime: str) -> str:
     elif regime == Regime.RISK_OFF.value:
         return COLORS["risk_off"]
     return COLORS["neutral"]
+
+
+def _show_last_updated(parquet_path: Path) -> None:
+    """Display a 'Last Updated' caption from a parquet file's modification time."""
+    try:
+        if parquet_path.exists():
+            mtime = datetime.fromtimestamp(parquet_path.stat().st_mtime)
+            ts = f"{mtime.month}/{mtime.day} at {mtime.strftime('%I:%M %p').lstrip('0')}"
+            st.caption(f"Data updated {ts}")
+        else:
+            st.caption("Data not yet generated")
+    except Exception:
+        pass
 
 
 # Ticker/ratio descriptions for display
@@ -403,6 +417,7 @@ def main():
 
     with tab1:
         st.subheader("Composite Signals Over Time")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding Composite Signals", expanded=False):
             st.markdown("""
@@ -427,16 +442,16 @@ Fast signals potential turns, Slow confirms sustained trends.
             """)
 
         fig = create_composite_timeseries(filtered_composites, filtered_regimes)
-        st.plotly_chart(fig, width="stretch")
+        st.plotly_chart(fig)
 
         st.subheader("Regime Distribution")
         col1, col2 = st.columns(2)
         with col1:
             fig = create_regime_distribution(filtered_regimes, COL_REGIME_MEDIUM, "Medium Regime")
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
         with col2:
             fig = create_regime_distribution(filtered_regimes, COL_REGIME_SLOW, "Slow Regime")
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
 
         # Regime Timeline Charts
         st.subheader("Regime Timeline")
@@ -461,18 +476,19 @@ These step-function charts show regime changes over time:
 
             with timeline_tabs[0]:
                 fig_fast = create_regime_timeline(filtered_regimes, COL_REGIME_FAST, "Fast Regime Timeline")
-                st.plotly_chart(fig_fast, use_container_width=True)
+                st.plotly_chart(fig_fast)
 
             with timeline_tabs[1]:
                 fig_medium = create_regime_timeline(filtered_regimes, COL_REGIME_MEDIUM, "Medium Regime Timeline")
-                st.plotly_chart(fig_medium, use_container_width=True)
+                st.plotly_chart(fig_medium)
 
             with timeline_tabs[2]:
                 fig_slow = create_regime_timeline(filtered_regimes, COL_REGIME_SLOW, "Slow Regime Timeline")
-                st.plotly_chart(fig_slow, use_container_width=True)
+                st.plotly_chart(fig_slow)
 
     with tab2:
         st.subheader("Current Block Scores")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding Block Scores", expanded=False):
             st.markdown("""
@@ -498,13 +514,13 @@ Green = risk-on, Red = risk-off. Look for persistent colors (trend) or divergenc
 
         if not filtered_blocks.empty:
             fig = create_block_bars(filtered_blocks)
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
 
             # Calculate weeks based on filtered data
             num_weeks = len(filtered_blocks)
             st.subheader(f"Block Heatmap (Last {num_weeks} Weeks)")
             fig = create_block_heatmap(filtered_blocks, weeks=num_weeks)
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
 
             # Block drill-down
             st.subheader("Block Details")
@@ -532,10 +548,11 @@ Green = risk-on, Red = risk-off. Look for persistent colors (trend) or divergenc
                     yaxis_title="Z-Score",
                     height=400,
                 )
-                st.plotly_chart(fig, width="stretch")
+                st.plotly_chart(fig)
 
     with tab3:
         st.subheader("Checklist Score Over Time")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding the Bull Market Checklist", expanded=False):
             st.markdown("""
@@ -610,7 +627,7 @@ Each item is classified as BULL, BEAR, or NEUTRAL based on its trend.
 
             # Chart
             fig = create_checklist_score_chart(filtered_checklist)
-            st.plotly_chart(fig, width="stretch")
+            st.plotly_chart(fig)
 
             st.subheader("Current Checklist Items")
 
@@ -656,6 +673,7 @@ Each item is classified as BULL, BEAR, or NEUTRAL based on its trend.
 
     with tab4:
         st.subheader("Regime Attribution")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding Attribution", expanded=False):
             st.markdown("""
@@ -719,7 +737,7 @@ This shows which factors are driving the current regime signal.
 
                             # Create and display waterfall chart
                             fig = create_attribution_chart(attribution, speed_key, f"{speed} Composite Attribution")
-                            st.plotly_chart(fig, use_container_width=True)
+                            st.plotly_chart(fig)
 
                             # Show contribution table
                             st.markdown("**Block Contributions**")
@@ -748,12 +766,13 @@ This shows which factors are driving the current regime signal.
                                 styled_contrib = contrib_df.style.map(
                                     color_contribution, subset=["Contribution"]
                                 )
-                                st.dataframe(styled_contrib, use_container_width=True, hide_index=True)
+                                st.dataframe(styled_contrib, width="stretch", hide_index=True)
                         else:
                             st.warning(f"No weight configuration found for {speed} composite.")
 
     with tab5:
         st.subheader("Composite Composition")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
         st.markdown("Block weights are normalized to sum to 1.0 for each composite.")
 
         for speed in ["fast", "medium", "slow"]:
@@ -798,7 +817,7 @@ This shows which factors are driving the current regime signal.
 
                 with col2:
                     fig = create_composition_pie(weights_df, speed)
-                    st.plotly_chart(fig, width="stretch")
+                    st.plotly_chart(fig)
 
                 # Expandable block details
                 st.markdown("**Block Details** (click to expand)")
@@ -819,6 +838,7 @@ This shows which factors are driving the current regime signal.
 
     with tab6:
         st.subheader("SPY Regime Backtest")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding the Backtest", expanded=False):
             st.markdown("""
@@ -877,7 +897,7 @@ educational purposes to understand how the regime model would have performed.
                     # Equity curves chart
                     st.markdown("### Equity Curves")
                     fig = create_equity_curves(backtest_results)
-                    st.plotly_chart(fig, width="stretch")
+                    st.plotly_chart(fig)
 
                     # Trade details in expanders
                     st.markdown("### Trade Details")
@@ -917,6 +937,7 @@ educational purposes to understand how the regime model would have performed.
 
     with tab7:
         st.subheader("Factor Leadership")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding Factor Leadership", expanded=False):
             st.markdown("""
@@ -1052,7 +1073,7 @@ rewarded by the market. This helps understand the "type" of market we're in.
                                 filtered_regimes[regime_col],
                                 title="SPY with Medium Regime Indicator"
                             )
-                            st.plotly_chart(fig, width="stretch")
+                            st.plotly_chart(fig)
                 except Exception as e:
                     st.warning(f"Could not load SPY data: {e}")
         else:
@@ -1060,6 +1081,7 @@ rewarded by the market. This helps understand the "type" of market we're in.
 
     with tab8:
         st.subheader("Market Breadth Heat Maps")
+        _show_last_updated(PROCESSED_DIR / "breadth_latest.parquet")
 
         # Explanation section
         with st.expander("What is Market Breadth? (Click to learn)", expanded=False):
@@ -1493,15 +1515,15 @@ for current readings. Look for:
 
                     # Cumulative A/D Line chart
                     ad_chart = create_cumulative_ad_chart(ts_data, title=f"{ts_index} Cumulative A/D Line")
-                    st.plotly_chart(ad_chart, use_container_width=True)
+                    st.plotly_chart(ad_chart)
 
                     # % Above MA chart
                     ma_chart = create_pct_above_ma_timeseries(ts_data, title=f"{ts_index} % Above Moving Averages")
-                    st.plotly_chart(ma_chart, use_container_width=True)
+                    st.plotly_chart(ma_chart)
 
                     # New Highs vs Lows chart
                     hl_chart = create_new_highs_lows_timeseries(ts_data, title=f"{ts_index} New Highs vs Lows")
-                    st.plotly_chart(hl_chart, use_container_width=True)
+                    st.plotly_chart(hl_chart)
                 else:
                     st.info("Click 'Load 5-Year Data' to compute and display historical breadth charts.")
 
@@ -1517,6 +1539,7 @@ for current readings. Look for:
 
     with tab9:
         st.subheader("Sector Scorecard")
+        _show_last_updated(PROCESSED_DIR / "regimes_latest.parquet")
 
         with st.expander("Understanding the Scorecard", expanded=False):
             st.markdown("""
@@ -1684,6 +1707,7 @@ A letter-grade ranking of S&P sectors based on three models:
 
     with tab10:
         st.subheader("Treasury Tax Flow")
+        _show_last_updated(PROCESSED_DIR / "treasury_tax_latest.parquet")
 
         with st.expander("Understanding Treasury Tax Flow (Deluard Methodology)", expanded=False):
             st.markdown("""
@@ -1786,7 +1810,7 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
                         categories=selected_categories if selected_categories else None,
                         title="Tax Deposit YoY Growth"
                     )
-                    st.plotly_chart(fig_yoy, use_container_width=True)
+                    st.plotly_chart(fig_yoy)
                 else:
                     st.info("YoY data not available. Refresh to compute.")
 
@@ -1815,7 +1839,7 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
 
                 if not ytd_comp_df.empty:
                     fig_ytd = create_ytd_comparison_chart(ytd_comp_df, category=ytd_category)
-                    st.plotly_chart(fig_ytd, use_container_width=True)
+                    st.plotly_chart(fig_ytd)
                 else:
                     st.info("YTD comparison data not available.")
 
@@ -1827,7 +1851,7 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
                 raw_df = treasury_data.get("raw", pd.DataFrame())
                 if not raw_df.empty:
                     fig_gig = create_gig_economy_chart(raw_df, rolling_window=rolling_window)
-                    st.plotly_chart(fig_gig, use_container_width=True)
+                    st.plotly_chart(fig_gig)
                 else:
                     st.info("Gig economy data not available.")
 
@@ -1850,7 +1874,7 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
                             category="total",
                             rolling_window=rolling_window,
                         )
-                        st.plotly_chart(fig_spy, use_container_width=True)
+                        st.plotly_chart(fig_spy)
                     else:
                         st.info("SPY price data not available for overlay.")
                 except Exception as e:
@@ -1872,7 +1896,7 @@ Gap widening = accelerating growth; Gap narrowing = decelerating growth.
                         categories=["withheld", "corporate", "non_withheld", "total"],
                         title="Cumulative Federal Tax Deposits"
                     )
-                    st.plotly_chart(fig_cumulative, use_container_width=True)
+                    st.plotly_chart(fig_cumulative)
                 else:
                     st.info("Cumulative data not available.")
 

@@ -749,7 +749,7 @@ def compute_cumulative_ad_line(close_df: pd.DataFrame) -> pd.Series:
     Returns:
         Series with cumulative A/D values indexed by date
     """
-    daily_returns = close_df.pct_change()
+    daily_returns = close_df.pct_change(fill_method=None)
     advancers = (daily_returns > 0).sum(axis=1)
     decliners = (daily_returns < 0).sum(axis=1)
     net_ad = advancers - decliners
@@ -1661,7 +1661,7 @@ def compute_breadth_timeseries(
     cumulative_ad = compute_cumulative_ad_line(close_df)
 
     # Compute daily advancers/decliners
-    daily_returns = close_df.pct_change()
+    daily_returns = close_df.pct_change(fill_method=None)
     advancers = (daily_returns > 0).sum(axis=1)
     decliners = (daily_returns < 0).sum(axis=1)
     total_stocks = daily_returns.notna().sum(axis=1)
