@@ -42,8 +42,8 @@ investment_clock:
       description: "Retail Sales"
       transform: yoy
       invert: false
-    - series_id: NAPM
-      description: "ISM Manufacturing PMI"
+    - series_id: MANEMP
+      description: "ISM Manufacturing Employment"
       transform: level
       invert: false
 
